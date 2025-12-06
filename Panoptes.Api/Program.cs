@@ -3,6 +3,7 @@ using Panoptes.Core.External;
 using Panoptes.Core.Interfaces;
 using Panoptes.Infrastructure.Persistence;
 using Panoptes.Infrastructure.Services;
+using Panoptes.Infrastructure.Configurations;
 using System;
 using System.IO;
 
@@ -12,6 +13,9 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+// Register Configuration
+builder.Services.Configure<PanoptesConfig>(builder.Configuration.GetSection("Panoptes"));
 
 // Register Persistence
 var dbPath = Path.Combine(Directory.GetCurrentDirectory(), "panoptes.db");
