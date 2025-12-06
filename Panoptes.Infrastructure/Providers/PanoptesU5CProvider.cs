@@ -31,17 +31,46 @@ public class PanoptesU5CProvider : ICardanoChainProvider
     }
 
     /// <summary>
-    /// Returns the origin point to start syncing from chain genesis.
-    /// UtxoRPC will fast-forward to the current tip automatically.
+    /// Fetches a recent valid block from Koios API to use as intersection point.
+    /// Koios provides free REST API access to Cardano chain data.
     /// </summary>
-    public Task<Point> GetTipAsync(ulong networkMagic = 2, CancellationToken? stoppingToken = null)
+    public async Task<Point> GetTipAsync(ulong networkMagic = 2, CancellationToken? stoppingToken = null)
     {
-        // Use "origin" - slot 0 with genesis hash
-        // UtxoRPC and Cardano node will automatically skip to the current tip
-        // Preprod genesis hash
-        var genesisHash = "d4b8de7a11d929a323373cbab6c1a9bdc931beffff11db111cf9d57356ee1937";
-        
-        return Task.FromResult(new Point(genesisHash, 0));
+        try
+        {
+            // Use Koios API to get recent tip
+            var koiosUrl = "https://preprod.koios.rest/api/v1/tip";
+            
+            using var httpClient = new HttpClient();
+            httpClient.Timeout = TimeSpan.FromSeconds(10);
+            
+            var response = await httpClient.GetAsync(koiosUrl, stoppingToken ?? CancellationToken.None);
+            response.EnsureSuccessStatusCode();
+            
+            var json = await response.Content.ReadAsStringAsync();
+            
+            // Parse JSON response - Koios returns: [{"hash":"...", "epoch_no":123, "abs_slot":12345678, "epoch_slot":123456, "block_no":9876543, "block_time":1234567890}]
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var tipArray = doc.RootElement;
+            
+            if (tipArray.GetArrayLength() > 0)
+            {
+                var tip = tipArray[0];
+                var hash = tip.GetProperty("hash").GetString();
+                var slot = tip.GetProperty("abs_slot").GetUInt64();
+                
+                if (!string.IsNullOrEmpty(hash))
+                {
+                    return new Point(hash, slot);
+                }
+            }
+            
+            throw new InvalidOperationException("Failed to parse Koios API response");
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Failed to fetch chain tip from Koios API: {ex.Message}", ex);
+        }
     }
 
     public async IAsyncEnumerable<NextResponse> StartChainSyncAsync(

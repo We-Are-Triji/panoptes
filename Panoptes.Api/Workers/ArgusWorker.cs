@@ -123,11 +123,16 @@ namespace Panoptes.Api.Workers
                             _ => 764824073
                         };
 
-                        _logger.LogInformation("Starting chain sync from Slot {Slot} with Network Magic {NetworkMagic}", startSlot, networkMagic);
+                        _logger.LogInformation("Starting chain sync from Slot {Slot}, Hash {Hash} with Network Magic {NetworkMagic}", 
+                            startSlot, startHash, networkMagic);
 
                         var blockCount = 0;
+                        var responseCount = 0;
                         await foreach (var response in provider.StartChainSyncAsync(intersections, networkMagic, stoppingToken))
                         {
+                            responseCount++;
+                            _logger.LogDebug("Received response #{Count}: {Action}", responseCount, response.Action);
+                            
                             if (response.Action == NextResponseAction.RollForward && response.Block != null)
                             {
                                 await reducer.RollForwardAsync(response.Block);
@@ -145,7 +150,7 @@ namespace Panoptes.Api.Workers
                         // If we exit the loop without processing any blocks, something is wrong
                         if (blockCount == 0)
                         {
-                            _logger.LogWarning("Chain sync ended without processing any blocks. Reconnecting in 5 seconds...");
+                            _logger.LogWarning("Chain sync ended after {ResponseCount} responses without processing any blocks. Intersection may be invalid. Reconnecting in 5 seconds...", responseCount);
                             await Task.Delay(5000, stoppingToken);
                         }
                     }
