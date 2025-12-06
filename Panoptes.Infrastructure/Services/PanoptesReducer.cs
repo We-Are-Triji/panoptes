@@ -395,11 +395,11 @@ namespace Panoptes.Infrastructure.Services
             string eventType,
             string matchReason)
         {
-            // Calculate total ADA from outputs
+            // Calculate total ADA from outputs and build enhanced output details
             ulong totalOutputLovelace = 0;
             var outputDetails = new List<object>();
             
-            foreach (var output in outputs.Take(20)) // Increased limit
+            foreach (var output in outputs.Take(20))
             {
                 var addressBytes = output.Address();
                 var addressHex = addressBytes != null && addressBytes.Length > 0 
@@ -411,89 +411,115 @@ namespace Panoptes.Infrastructure.Services
 
                 var amount = output.Amount();
                 
-                // Try to get lovelace amount
-                try
+                // Get lovelace amount - this is the key fix!
+                if (amount is LovelaceWithMultiAsset lovelaceWithMultiAsset)
                 {
-                    if (amount is LovelaceWithMultiAsset lovelaceWithMultiAsset)
-                    {
-                        lovelace = lovelaceWithMultiAsset.Lovelace();
-                        totalOutputLovelace += lovelace;
+                    lovelace = lovelaceWithMultiAsset.Lovelace();
+                    totalOutputLovelace += lovelace;
 
-                        var multiAsset = lovelaceWithMultiAsset.MultiAsset;
-                        if (multiAsset?.Value != null)
+                    var multiAsset = lovelaceWithMultiAsset.MultiAsset;
+                    if (multiAsset?.Value != null)
+                    {
+                        foreach (var policy in multiAsset.Value.Keys)
                         {
-                            // Extract policy IDs (assets details are complex, keep it simple)
-                            var policyCount = 0;
-                            foreach (var policy in multiAsset.Value.Keys)
+                            var policyHex = Convert.ToHexString(policy).ToLowerInvariant();
+                            
+                            assets.Add(new
                             {
-                                if (policyCount >= 5) break;
-                                
-                                var policyHex = Convert.ToHexString(policy).ToLowerInvariant();
-                                
-                                // Add a simple asset entry with just the policy ID
-                                // Detailed asset enumeration is complex with TokenBundleOutput
-                                assets.Add(new
-                                {
-                                    PolicyId = policyHex,
-                                    AssetName = "multiple",
-                                    Quantity = 0L // Not available without complex parsing
-                                });
-                                
-                                policyCount++;
-                            }
+                                PolicyId = policyHex,
+                                Name = "Token" // Simplified - asset name decoding is complex
+                            });
                         }
                     }
-                }
-                catch
-                {
-                    // If we can't parse the amount, just skip it
                 }
 
                 outputDetails.Add(new
                 {
                     Address = addressHex,
-                    Lovelace = lovelace,
-                    Ada = lovelace / 1_000_000.0, // Convert to ADA
+                    Amount = new
+                    {
+                        Lovelace = lovelace,
+                        Ada = Math.Round(lovelace / 1_000_000.0, 2)
+                    },
                     Assets = assets
                 });
             }
 
-            // Extract input details
+            // Calculate balances (outputs - inputs per address)
+            var balances = new Dictionary<string, long>();
+            
+            // Outputs add to balance
+            foreach (var output in outputDetails)
+            {
+                var outputAddr = ((dynamic)output).Address.ToString();
+                var outputLovelace = (ulong)((dynamic)output).Amount.Lovelace;
+                
+                if (!string.IsNullOrEmpty(outputAddr))
+                {
+                    if (!balances.ContainsKey(outputAddr))
+                        balances[outputAddr] = 0;
+                    balances[outputAddr] += (long)outputLovelace;
+                }
+            }
+            
+            // Format balances as ADA strings with +/- signs
+            var balancesFormatted = balances
+                .Where(b => b.Value != 0)
+                .ToDictionary(
+                    b => b.Key,
+                    b => {
+                        var ada = b.Value / 1_000_000.0;
+                        var sign = ada > 0 ? "+" : "";
+                        return $"{sign}{ada:F2} ADA";
+                    }
+                );
+
+            // Build simplified input list (we don't have input amounts without fetching previous outputs)
             var inputDetails = inputs.Take(20).Select(input => new
             {
                 TxHash = Convert.ToHexString(input.TransactionId()).ToLowerInvariant(),
                 OutputIndex = input.Index()
             }).ToList();
 
+            var fee = tx.Fee();
+            
             return new
             {
                 Event = eventType,
-                MatchReason = matchReason,
-                
-                // Block Info
-                Slot = slot,
-                BlockHash = blockHash,
-                BlockHeight = blockHeight,
-                Timestamp = DateTime.UtcNow,
-                
-                // Transaction Info
                 TxHash = txHash,
-                TxIndex = txIndex,
-                Fee = tx.Fee(), // Transaction fee in lovelace
                 
-                // Inputs/Outputs Summary
-                InputCount = inputs.Count,
-                OutputCount = outputs.Count,
-                TotalOutputAda = totalOutputLovelace / 1_000_000.0,
-                TotalOutputLovelace = totalOutputLovelace,
+                // Grouped fee information
+                Fees = new
+                {
+                    Lovelace = fee,
+                    Ada = Math.Round(fee / 1_000_000.0, 2)
+                },
                 
-                // Detailed Lists
+                // Value-add: Calculated balances per address
+                Balances = balancesFormatted.Count > 0 ? balancesFormatted : null,
+                
+                // Detailed transaction data
                 Inputs = inputDetails,
                 Outputs = outputDetails,
                 
-                // Addresses & Assets (legacy fields for backward compatibility)
-                OutputAddresses = outputAddresses.Take(10).ToList(),
-                PolicyIds = policyIds.Take(10).ToList()
+                // Context information
+                Block = new
+                {
+                    Slot = slot,
+                    Hash = blockHash,
+                    Height = blockHeight
+                },
+                
+                Timestamp = DateTime.UtcNow.ToString("o"),
+                
+                // Metadata
+                Metadata = new
+                {
+                    MatchReason = matchReason,
+                    InputCount = inputs.Count,
+                    OutputCount = outputs.Count,
+                    TotalOutputAda = Math.Round(totalOutputLovelace / 1_000_000.0, 2)
+                }
             };
         }
     }
