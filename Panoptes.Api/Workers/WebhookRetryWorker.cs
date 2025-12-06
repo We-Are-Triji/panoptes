@@ -51,14 +51,15 @@ namespace Panoptes.Api.Workers
             var dbContext = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
             var dispatcher = scope.ServiceProvider.GetRequiredService<IWebhookDispatcher>();
 
-            // Find logs that need retry
+            // Find logs that need retry (ordered by NextRetryAt to process oldest first)
             var logsToRetry = await dbContext.DeliveryLogs
                 .Where(l => l.Status == DeliveryStatus.Retrying 
                          && l.NextRetryAt != null 
                          && l.NextRetryAt <= DateTime.UtcNow
                          && l.RetryCount < l.MaxRetries)
-                .Include(l => l.Subscription)
+                .OrderBy(l => l.NextRetryAt)
                 .Take(10) // Process in batches
+                .Include(l => l.Subscription)
                 .ToListAsync(stoppingToken);
 
             if (!logsToRetry.Any())

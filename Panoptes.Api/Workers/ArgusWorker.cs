@@ -93,11 +93,23 @@ namespace Panoptes.Api.Workers
                             _logger.LogInformation("Using configured start point: Slot {Slot}, Hash {Hash}", startSlot, startHash);
                         }
 
+                        // If still no valid start point, fetch the current chain tip dynamically
                         if (startSlot == null || string.IsNullOrEmpty(startHash))
                         {
-                            _logger.LogError("No valid start point found. Please configure StartSlot and StartHash in appsettings.json.");
-                            await Task.Delay(5000, stoppingToken);
-                            continue;
+                            _logger.LogInformation("No valid start point found. Fetching current chain tip...");
+                            try
+                            {
+                                var tip = await provider.GetTipAsync(0, stoppingToken);
+                                startSlot = tip.Slot;
+                                startHash = tip.Hash;
+                                _logger.LogInformation("Fetched chain tip: Slot {Slot}, Hash {Hash}", startSlot, startHash);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, "Failed to fetch chain tip. Retrying in 5 seconds...");
+                                await Task.Delay(5000, stoppingToken);
+                                continue;
+                            }
                         }
 
                         intersections.Add(new Point(startHash, startSlot.Value));
@@ -113,11 +125,13 @@ namespace Panoptes.Api.Workers
 
                         _logger.LogInformation("Starting chain sync from Slot {Slot} with Network Magic {NetworkMagic}", startSlot, networkMagic);
 
+                        var blockCount = 0;
                         await foreach (var response in provider.StartChainSyncAsync(intersections, networkMagic, stoppingToken))
                         {
                             if (response.Action == NextResponseAction.RollForward && response.Block != null)
                             {
                                 await reducer.RollForwardAsync(response.Block);
+                                blockCount++;
                             }
                             else if (response.Action == NextResponseAction.RollBack)
                             {
@@ -127,7 +141,19 @@ namespace Panoptes.Api.Workers
                                 }
                             }
                         }
+                        
+                        // If we exit the loop without processing any blocks, something is wrong
+                        if (blockCount == 0)
+                        {
+                            _logger.LogWarning("Chain sync ended without processing any blocks. Reconnecting in 5 seconds...");
+                            await Task.Delay(5000, stoppingToken);
+                        }
                     }
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    _logger.LogInformation("Argus Worker stopping due to cancellation request");
+                    break;
                 }
                 catch (Exception ex)
                 {

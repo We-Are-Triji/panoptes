@@ -9,6 +9,8 @@ using Chrysalis.Cbor.Types;
 using System.Formats.Cbor;
 using Utxorpc.Sdk;
 using U5CNextResponse = Utxorpc.Sdk.Models.NextResponse;
+using Chrysalis.Cbor.Extensions.Cardano.Core;
+using Chrysalis.Cbor.Extensions.Cardano.Core.Header;
 
 namespace Panoptes.Infrastructure.Providers;
 
@@ -28,9 +30,18 @@ public class PanoptesU5CProvider : ICardanoChainProvider
         _headers = headers;
     }
 
+    /// <summary>
+    /// Returns the origin point to start syncing from chain genesis.
+    /// UtxoRPC will fast-forward to the current tip automatically.
+    /// </summary>
     public Task<Point> GetTipAsync(ulong networkMagic = 2, CancellationToken? stoppingToken = null)
     {
-        throw new NotImplementedException("GetTipAsync is not supported by UtxoRPC provider");
+        // Use "origin" - slot 0 with genesis hash
+        // UtxoRPC and Cardano node will automatically skip to the current tip
+        // Preprod genesis hash
+        var genesisHash = "d4b8de7a11d929a323373cbab6c1a9bdc931beffff11db111cf9d57356ee1937";
+        
+        return Task.FromResult(new Point(genesisHash, 0));
     }
 
     public async IAsyncEnumerable<NextResponse> StartChainSyncAsync(

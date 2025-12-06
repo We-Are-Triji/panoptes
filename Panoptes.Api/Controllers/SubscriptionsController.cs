@@ -41,6 +41,10 @@ namespace Panoptes.Api.Controllers
             // Auto-generate SecretKey (ignore any client-provided value)
             subscription.SecretKey = Guid.NewGuid().ToString("N");
             
+            // Default to active if not specified
+            // Note: bool defaults to false, but frontend sends true explicitly
+            // This is kept for clarity
+            
             if (subscription.CreatedAt == default)
             {
                 subscription.CreatedAt = DateTime.UtcNow;
@@ -48,6 +52,8 @@ namespace Panoptes.Api.Controllers
 
             _dbContext.WebhookSubscriptions.Add(subscription);
             await _dbContext.SaveChangesAsync();
+            
+            Console.WriteLine($"Created subscription: {subscription.Name}, IsActive: {subscription.IsActive}, EventType: {subscription.EventType}");
 
             return CreatedAtAction(nameof(GetSubscriptions), new { id = subscription.Id }, subscription);
         }

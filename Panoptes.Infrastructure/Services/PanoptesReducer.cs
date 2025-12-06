@@ -52,11 +52,23 @@ namespace Panoptes.Infrastructure.Services
                 .AsNoTracking()
                 .ToListAsync();
 
+            // Log subscription count periodically
+            if (blockHeight % 100 == 0 && subscriptions.Any())
+            {
+                _logger?.LogInformation("Found {Count} active subscriptions", subscriptions.Count);
+            }
+
             if (subscriptions.Any())
             {
                 var txs = block.TransactionBodies();
                 if (txs != null && txs.Any())
                 {
+                    // Log when we find transactions with active subscriptions
+                    if (blockHeight % 100 == 0)
+                    {
+                        _logger?.LogInformation("Block {Height} has {TxCount} transactions", blockHeight, txs.Count());
+                    }
+                    
                     var txIndex = 0;
                     foreach (var tx in txs)
                     {
@@ -119,6 +131,13 @@ namespace Panoptes.Infrastructure.Services
                 {
                     bool shouldDispatch = false;
                     string matchReason = "";
+                    
+                    // Debug: Log subscription details on first transaction of significant blocks
+                    if (txIndex == 0 && blockHeight % 500 == 0)
+                    {
+                        _logger?.LogInformation("Checking subscription '{Name}' (EventType: '{EventType}', TargetAddress: '{Addr}', Active: {Active})", 
+                            sub.Name, sub.EventType, sub.TargetAddress ?? "(none)", sub.IsActive);
+                    }
 
                     switch (sub.EventType?.ToLowerInvariant())
                     {
@@ -129,10 +148,25 @@ namespace Panoptes.Infrastructure.Services
                                 shouldDispatch = true;
                                 matchReason = "All transactions";
                             }
-                            else if (outputAddresses.Contains(sub.TargetAddress))
+                            else
                             {
-                                shouldDispatch = true;
-                                matchReason = $"Address match: {sub.TargetAddress}";
+                                // Try matching both hex format and bech32 format
+                                var targetAddressLower = sub.TargetAddress.ToLowerInvariant();
+                                
+                                // Check if any output address contains the target (for hex comparison)
+                                // or if the target is a bech32 address, we match against hex
+                                if (outputAddresses.Contains(targetAddressLower))
+                                {
+                                    shouldDispatch = true;
+                                    matchReason = $"Address match (hex): {sub.TargetAddress}";
+                                }
+                                // Also check if the target address (possibly bech32) matches any output
+                                // For now, if user enters partial hex, try to match
+                                else if (outputAddresses.Any(addr => addr.Contains(targetAddressLower) || targetAddressLower.Contains(addr)))
+                                {
+                                    shouldDispatch = true;
+                                    matchReason = $"Address partial match: {sub.TargetAddress}";
+                                }
                             }
                             break;
 
@@ -186,6 +220,9 @@ namespace Panoptes.Infrastructure.Services
 
                     if (shouldDispatch)
                     {
+                        _logger?.LogInformation("🔔 Dispatching webhook to {Name} for {EventType}: {Reason}", 
+                            sub.Name, sub.EventType, matchReason);
+                            
                         await DispatchWebhook(sub, new
                         {
                             Event = sub.EventType,
