@@ -20,8 +20,13 @@ const SubscriptionDetail: React.FC = () => {
 
   const fetchSubscription = async () => {
     if (!id) return;
+    console.log('[SubscriptionDetail] Fetching subscription with id:', id);
     try {
       const data = await getSubscription(id);
+      console.log('[SubscriptionDetail] Subscription data:', data);
+      console.log('[SubscriptionDetail] TargetAddress:', data.targetAddress);
+      console.log('[SubscriptionDetail] PolicyId:', data.policyId);
+      console.log('[SubscriptionDetail] TargetUrl:', data.targetUrl);
       setSubscription(data);
       setError(null);
     } catch (error: any) {
@@ -33,15 +38,29 @@ const SubscriptionDetail: React.FC = () => {
 
   const fetchLogs = async () => {
     if (!id) return;
+    console.log('[SubscriptionDetail] Fetching logs for subscription:', id);
     try {
       const logsData = await getSubscriptionLogs(id, 0, 100);
-      setLogs(logsData.logs);
-      setTotalLogs(logsData.totalCount);
+      console.log('[SubscriptionDetail] Logs data:', logsData);
+      
+      // Handle both response formats: array or { logs, totalCount }
+      if (Array.isArray(logsData)) {
+        // Backend returned array directly (old format)
+        setLogs(logsData);
+        setTotalLogs(logsData.length);
+      } else {
+        // Backend returned { logs, totalCount } (new format)
+        setLogs(logsData.logs || []);
+        setTotalLogs(logsData.totalCount || 0);
+      }
       setError(null);
     } catch (error: any) {
       console.error("Error fetching logs:", error);
       const errorMsg = error.response?.data || error.message || "Failed to fetch delivery logs.";
       setError(`API Error: ${errorMsg}`);
+      // Keep logs as empty array on error
+      setLogs([]);
+      setTotalLogs(0);
     }
   };
 
@@ -101,13 +120,13 @@ const SubscriptionDetail: React.FC = () => {
   };
 
   const calculateSuccessRate = () => {
-    if (logs.length === 0) return 0;
+    if (!logs || logs.length === 0) return 0;
     const successCount = logs.filter(l => l.responseStatusCode >= 200 && l.responseStatusCode < 300).length;
     return Math.round((successCount / logs.length) * 100);
   };
 
   const calculateAvgLatency = () => {
-    if (logs.length === 0) return 0;
+    if (!logs || logs.length === 0) return 0;
     const totalLatency = logs.reduce((sum, log) => sum + log.latencyMs, 0);
     return Math.round(totalLatency / logs.length);
   };
@@ -275,7 +294,7 @@ const SubscriptionDetail: React.FC = () => {
           <div className="bg-white overflow-hidden shadow rounded-lg">
             <div className="px-4 py-5 sm:p-6">
               <dt className="text-sm font-medium text-gray-500 truncate">Total Deliveries</dt>
-              <dd className="mt-1 text-3xl font-semibold text-gray-900">{logs.length}</dd>
+              <dd className="mt-1 text-3xl font-semibold text-gray-900">{totalLogs}</dd>
             </div>
           </div>
           <div className="bg-white overflow-hidden shadow rounded-lg">
@@ -324,7 +343,7 @@ const SubscriptionDetail: React.FC = () => {
           </div>
           <div className="px-6 py-5">
             <DeliveryLogsTable 
-              logs={logs} 
+              logs={logs || []} 
               showSubscriptionId={false}
               totalCount={totalLogs}
               currentPage={1}

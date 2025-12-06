@@ -6,26 +6,31 @@ interface LogViewerProps {
     subscriptions?: WebhookSubscription[];
 }
 
-const LogViewer: React.FC<LogViewerProps> = ({ logs, subscriptions = [] }) => {
+const LogViewer: React.FC<LogViewerProps> = ({ logs, subscriptions }) => {
     const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+    
+    // Defensive checks
+    const safeLogs = logs || [];
+    const safeSubscriptions = subscriptions || [];
 
     const toggleExpand = (id: string) => {
         setExpandedLogId(expandedLogId === id ? null : id);
     };
 
     const getSubscriptionName = (subscriptionId: string) => {
-        const sub = subscriptions.find(s => s.id === subscriptionId);
+        const sub = safeSubscriptions.find(s => s.id === subscriptionId);
         return sub?.name || `ID: ${subscriptionId.substring(0, 8)}...`;
     };
 
     return (
-        <div className="bg-white shadow rounded-lg overflow-hidden flex flex-col h-full">
-            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-                <h3 className="text-lg font-medium leading-6 text-gray-900">Delivery Logs</h3>
-            </div>
-            <div className="overflow-y-auto flex-1 p-0 max-h-[600px]">
+        <div className="overflow-y-auto">
+            {safeLogs.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                    <p className="text-sm">No delivery logs yet</p>
+                </div>
+            ) : (
                 <ul className="divide-y divide-gray-200">
-                    {logs.map((log) => {
+                    {safeLogs.map((log) => {
                         const isSuccess = log.responseStatusCode >= 200 && log.responseStatusCode < 300;
                         const isExpanded = expandedLogId === log.id;
 
@@ -50,7 +55,7 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, subscriptions = [] }) => {
                                             {log.latencyMs.toFixed(0)}ms
                                         </div>
                                     </div>
-                                    {subscriptions.length > 0 && (
+                                    {safeSubscriptions.length > 0 && (
                                         <div className="text-xs text-gray-600 pl-1">
                                             📌 {getSubscriptionName(log.subscriptionId)}
                                         </div>
@@ -75,14 +80,14 @@ const LogViewer: React.FC<LogViewerProps> = ({ logs, subscriptions = [] }) => {
                                             <pre className="bg-gray-100 text-gray-700 p-3 rounded text-xs overflow-x-auto border border-gray-200">
                                                 {log.responseBody}
                                             </pre>
-                                        </div>
-                                    </div>
-                                )}
-                            </li>
+                        </div>
+                    </div>
+                )}
+                        </li>
                         );
                     })}
                 </ul>
-            </div>
+            )}
         </div>
     );
 };

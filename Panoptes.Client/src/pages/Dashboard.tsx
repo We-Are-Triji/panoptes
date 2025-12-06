@@ -252,7 +252,7 @@ const Dashboard: React.FC = () => {
                 )}
               </div>
               <div className="px-6 py-5 max-h-[600px] overflow-y-auto">
-                <LogViewer logs={logs} subscriptions={subscriptions} />
+                <LogViewer logs={logs || []} subscriptions={subscriptions || []} />
               </div>
             </div>
           </div>

@@ -147,7 +147,9 @@ namespace Panoptes.Api.Controllers
                     .Take(Math.Min(take ?? 50, 100)) // Max 100 per request
                     .ToListAsync();
 
-                return Ok(new { logs, totalCount });
+                var result = new { logs, totalCount };
+                Console.WriteLine($"[GetSubscriptionLogs] Returning {logs.Count} logs out of {totalCount} total");
+                return Ok(result);
             }
             catch (Exception ex)
             {

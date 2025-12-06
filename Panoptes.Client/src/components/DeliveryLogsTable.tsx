@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { DeliveryLog, WebhookSubscription } from '../types';
 
 interface DeliveryLogsTableProps {
@@ -17,6 +17,14 @@ const DeliveryLogsTable: React.FC<DeliveryLogsTableProps> = ({
   currentPage = 1,
   pageSize = 100
 }) => {
+  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+
+  const toggleExpand = (id: string) => {
+    setExpandedLogId(expandedLogId === id ? null : id);
+  };
+
+  // Defensive check for undefined logs
+  const safeLogs = logs || [];
   const getStatusBadge = (statusCode: number) => {
     if (statusCode >= 200 && statusCode < 300) {
       return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">{statusCode}</span>;
@@ -77,34 +85,70 @@ const DeliveryLogsTable: React.FC<DeliveryLogsTableProps> = ({
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
-          {logs.length === 0 ? (
+          {safeLogs.length === 0 ? (
             <tr>
               <td colSpan={showSubscriptionId ? 5 : 4} className="px-4 py-8 text-center text-sm text-gray-500">
                 No delivery logs found
               </td>
             </tr>
           ) : (
-            logs.map((log) => (
-              <tr key={log.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">
-                  {formatTimestamp(log.attemptedAt)}
-                </td>
-                {showSubscriptionId && (
-                  <td className="px-4 py-3 text-sm text-gray-500">
-                    <div className="font-mono text-xs text-gray-400">{truncateId(log.subscriptionId)}</div>
-                  </td>
-                )}
-                <td className="px-4 py-3 text-sm">
-                  {getStatusBadge(log.responseStatusCode)}
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-900">
-                  {log.latencyMs.toFixed(0)}ms
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-500 max-w-xs truncate">
-                  {log.responseBody || '—'}
-                </td>
-              </tr>
-            ))
+            safeLogs.map((log) => {
+              const isExpanded = expandedLogId === log.id;
+              return (
+                <React.Fragment key={log.id}>
+                  <tr className="hover:bg-gray-50 cursor-pointer" onClick={() => toggleExpand(log.id)}>
+                    <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <svg className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                        {formatTimestamp(log.attemptedAt)}
+                      </div>
+                    </td>
+                    {showSubscriptionId && (
+                      <td className="px-4 py-3 text-sm text-gray-500">
+                        <div className="font-mono text-xs text-gray-400">{truncateId(log.subscriptionId)}</div>
+                      </td>
+                    )}
+                    <td className="px-4 py-3 text-sm">
+                      {getStatusBadge(log.responseStatusCode)}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-900">
+                      {log.latencyMs.toFixed(0)}ms
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-500 max-w-xs truncate">
+                      {log.responseBody || '—'}
+                    </td>
+                  </tr>
+                  {isExpanded && (
+                    <tr>
+                      <td colSpan={showSubscriptionId ? 5 : 4} className="px-4 py-4 bg-gray-50">
+                        <div className="space-y-3">
+                          <div>
+                            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Payload</p>
+                            <pre className="bg-gray-800 text-gray-100 p-3 rounded text-xs overflow-x-auto max-h-96">
+                              {(() => {
+                                try {
+                                  return JSON.stringify(JSON.parse(log.payloadJson || '{}'), null, 2);
+                                } catch {
+                                  return log.payloadJson || 'No payload';
+                                }
+                              })()}
+                            </pre>
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Response</p>
+                            <pre className="bg-gray-100 text-gray-700 p-3 rounded text-xs overflow-x-auto border border-gray-200 max-h-48">
+                              {log.responseBody || 'No response'}
+                            </pre>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })
           )}
         </tbody>
       </table>
