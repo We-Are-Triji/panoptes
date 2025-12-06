@@ -4,10 +4,12 @@ import { WebhookSubscription, DeliveryLog } from '../types';
 import StatCard from '../components/StatCard';
 import SubscriptionTable from '../components/SubscriptionTable';
 import LogViewer from '../components/LogViewer';
+import CreateSubscriptionModal from '../components/CreateSubscriptionModal';
 
 const Dashboard: React.FC = () => {
   const [subscriptions, setSubscriptions] = useState<WebhookSubscription[]>([]);
   const [logs, setLogs] = useState<DeliveryLog[]>([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const fetchSubscriptions = async () => {
     try {
@@ -52,24 +54,18 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const handleCreate = async () => {
-    const name = prompt("Enter subscription name:");
-    if (!name) return;
-    const url = prompt("Enter target URL:");
-    if (!url) return;
-    const secret = prompt("Enter secret key:");
-    if (!secret) return;
-
+  const handleCreate = async (data: { name: string; targetUrl: string; eventType: string }) => {
     try {
       await createSubscription({
-        name,
-        targetUrl: url,
-        secretKey: secret,
-        eventType: "transaction",
+        name: data.name,
+        targetUrl: data.targetUrl,
+        secretKey: '', // Backend will auto-generate this
+        eventType: data.eventType,
         isActive: true,
         targetAddress: null,
         policyId: null
       });
+      setIsModalOpen(false);
       fetchSubscriptions();
     } catch (error) {
       console.error("Error creating subscription:", error);
@@ -116,7 +112,7 @@ const Dashboard: React.FC = () => {
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-medium text-gray-900">Subscriptions</h2>
               <button 
-                onClick={handleCreate}
+                onClick={() => setIsModalOpen(true)}
                 className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700"
               >
                 New Subscription
@@ -131,6 +127,13 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
       </main>
+
+      {/* Create Subscription Modal */}
+      <CreateSubscriptionModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onCreate={handleCreate}
+      />
     </div>
   );
 };
