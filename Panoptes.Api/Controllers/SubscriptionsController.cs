@@ -73,13 +73,16 @@ namespace Panoptes.Api.Controllers
         }
 
         [HttpGet("/logs")]
-        public async Task<ActionResult<System.Collections.Generic.IEnumerable<DeliveryLog>>> GetLogs()
+        public async Task<ActionResult<System.Collections.Generic.IEnumerable<DeliveryLog>>> GetLogs(
+            [FromQuery] int? skip = 0,
+            [FromQuery] int? take = 50)
         {
             try
             {
                 var logs = await _dbContext.DeliveryLogs
                     .OrderByDescending(l => l.AttemptedAt)
-                    .Take(50)
+                    .Skip(skip ?? 0)
+                    .Take(Math.Min(take ?? 50, 100)) // Max 100 per request
                     .ToListAsync();
 
                 return Ok(logs);
@@ -87,6 +90,57 @@ namespace Panoptes.Api.Controllers
             catch (Exception ex)
             {
                 Console.WriteLine($"Error getting logs: {ex}");
+                return StatusCode(500, ex.Message);
+            }
+        }
+
+        [HttpGet("{id}/logs")]
+        public async Task<ActionResult<System.Collections.Generic.IEnumerable<DeliveryLog>>> GetSubscriptionLogs(
+            Guid id,
+            [FromQuery] int? skip = 0,
+            [FromQuery] int? take = 50)
+        {
+            try
+            {
+                // Verify subscription exists
+                var subscription = await _dbContext.WebhookSubscriptions.FindAsync(id);
+                if (subscription == null)
+                {
+                    return NotFound($"Subscription with ID {id} not found.");
+                }
+
+                var logs = await _dbContext.DeliveryLogs
+                    .Where(l => l.SubscriptionId == id)
+                    .OrderByDescending(l => l.AttemptedAt)
+                    .Skip(skip ?? 0)
+                    .Take(Math.Min(take ?? 50, 100)) // Max 100 per request
+                    .ToListAsync();
+
+                return Ok(logs);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error getting subscription logs: {ex}");
+                return StatusCode(500, ex.Message);
+            }
+        }
+
+        [HttpGet("{id}")]
+        public async Task<ActionResult<WebhookSubscription>> GetSubscription(Guid id)
+        {
+            try
+            {
+                var subscription = await _dbContext.WebhookSubscriptions.FindAsync(id);
+                if (subscription == null)
+                {
+                    return NotFound($"Subscription with ID {id} not found.");
+                }
+
+                return Ok(subscription);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error getting subscription: {ex}");
                 return StatusCode(500, ex.Message);
             }
         }

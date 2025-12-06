@@ -1,5 +1,10 @@
 name: Build and Test
 
+permissions:
+  checks: write
+  contents: read
+  pull-requests: read
+
 on:
   push:
     branches: [ main, develop ]
@@ -44,7 +49,7 @@ jobs:
       
     - name: 📊 Publish test results
       uses: dorny/test-reporter@v1
-      if: success() || failure()
+      if: (success() || failure()) && github.event.pull_request.head.repo.full_name == github.repository
       with:
         name: Backend Test Results
         path: '**/test-results.trx'
@@ -257,6 +262,7 @@ jobs:
           -not -path "*/bin/*" \
           -not -path "*/obj/*" \
           -not -path "*/.vscode/*" \
+          -not -name "tsconfig*.json" \
           | while read file; do
           
           echo "Checking: $file"
@@ -266,7 +272,7 @@ jobs:
           fi
         done
         
-        echo "✅ All JSON files are valid"
+        echo "✅ All JSON files are valid (tsconfig*.json excluded as JSONC)"
         
     - name: 📋 Check required files
       run: |
