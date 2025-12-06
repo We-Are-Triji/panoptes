@@ -379,6 +379,140 @@ namespace Panoptes.Infrastructure.Services
         }
 
         /// <summary>
+        /// Convert hex address to Bech32 format (addr1...)
+        /// </summary>
+        private string ConvertToBech32Address(string hexAddress, string network = "preprod")
+        {
+            if (string.IsNullOrEmpty(hexAddress))
+                return hexAddress;
+
+            try
+            {
+                var bytes = Convert.FromHexString(hexAddress);
+                if (bytes.Length == 0)
+                    return hexAddress;
+
+                // Determine prefix from header byte (first byte indicates network)
+                var header = bytes[0];
+                var isTestnet = (header & 0xF0) != 0x00;
+                var prefix = isTestnet ? "addr_test" : "addr";
+
+                // Encode to Bech32
+                var encoded = Bech32Encode(prefix, bytes);
+                return encoded;
+            }
+            catch
+            {
+                // Fallback to hex if Bech32 encoding fails
+                return hexAddress;
+            }
+        }
+
+        /// <summary>
+        /// Bech32 encoding implementation for Cardano addresses
+        /// </summary>
+        private string Bech32Encode(string hrp, byte[] data)
+        {
+            const string charset = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+            
+            // Convert 8-bit data to 5-bit groups
+            var converted = ConvertBits(data, 8, 5, true);
+            if (converted == null)
+                return string.Empty;
+            
+            // Create checksum
+            var values = new List<byte>();
+            values.AddRange(ExpandHrp(hrp));
+            values.AddRange(converted);
+            values.AddRange(new byte[] { 0, 0, 0, 0, 0, 0 });
+            
+            var polymod = Bech32Polymod(values);
+            var checksum = new byte[6];
+            for (int i = 0; i < 6; i++)
+            {
+                checksum[i] = (byte)((polymod >> (5 * (5 - i))) & 31);
+            }
+            
+            // Combine everything
+            var combined = new List<byte>(converted);
+            combined.AddRange(checksum);
+            
+            var result = hrp + "1";
+            foreach (var value in combined)
+            {
+                result += charset[value];
+            }
+            
+            return result;
+        }
+
+        private byte[]? ConvertBits(byte[] data, int fromBits, int toBits, bool pad)
+        {
+            var acc = 0;
+            var bits = 0;
+            var result = new List<byte>();
+            var maxv = (1 << toBits) - 1;
+
+            foreach (var value in data)
+            {
+                acc = (acc << fromBits) | value;
+                bits += fromBits;
+                while (bits >= toBits)
+                {
+                    bits -= toBits;
+                    result.Add((byte)((acc >> bits) & maxv));
+                }
+            }
+
+            if (pad && bits > 0)
+            {
+                result.Add((byte)((acc << (toBits - bits)) & maxv));
+            }
+            else if (bits >= fromBits || ((acc << (toBits - bits)) & maxv) != 0)
+            {
+                return null;
+            }
+
+            return result.ToArray();
+        }
+
+        private byte[] ExpandHrp(string hrp)
+        {
+            var result = new List<byte>();
+            foreach (var c in hrp)
+            {
+                result.Add((byte)(c >> 5));
+            }
+            result.Add(0);
+            foreach (var c in hrp)
+            {
+                result.Add((byte)(c & 31));
+            }
+            return result.ToArray();
+        }
+
+        private uint Bech32Polymod(List<byte> values)
+        {
+            uint[] gen = { 0x3b6a57b2u, 0x26508e6du, 0x1ea119fau, 0x3d4233ddu, 0x2a1462b3u };
+            uint chk = 1;
+            
+            foreach (var value in values)
+            {
+                var top = chk >> 25;
+                chk = ((chk & 0x1ffffff) << 5) ^ value;
+                for (int i = 0; i < 5; i++)
+                {
+                    if (((top >> i) & 1) != 0)
+                    {
+                        chk ^= gen[i];
+                    }
+                }
+            }
+            
+            return chk ^ 1;
+        }
+
+        /// <summary>
         /// Build enhanced webhook payload with comprehensive transaction details
         /// </summary>
         private object BuildEnhancedPayload(
@@ -395,6 +529,15 @@ namespace Panoptes.Infrastructure.Services
             string eventType,
             string matchReason)
         {
+            // Extract input addresses for proper change detection
+            var inputAddresses = new HashSet<string>();
+            foreach (var input in inputs)
+            {
+                // Note: We can't get the address directly from TransactionInput
+                // We'd need to fetch the previous transaction output
+                // For now, we'll use a different heuristic
+            }
+            
             // Calculate total ADA from outputs and build enhanced output details
             ulong totalOutputLovelace = 0;
             var outputDetails = new List<object>();
@@ -411,10 +554,14 @@ namespace Panoptes.Infrastructure.Services
 
                 var amount = output.Amount();
                 
-                // Get lovelace amount - this is the key fix!
+                // DIAGNOSTIC: Log the raw amount type for debugging
+                _logger?.LogDebug($"Output amount type: {amount?.GetType().Name ?? "null"}");
+                
+                // Get lovelace amount - handle multiple possible types
                 if (amount is LovelaceWithMultiAsset lovelaceWithMultiAsset)
                 {
                     lovelace = lovelaceWithMultiAsset.Lovelace();
+                    _logger?.LogDebug($"Parsed Lovelace from LovelaceWithMultiAsset: {lovelace} at address {addressHex}");
                     totalOutputLovelace += lovelace;
 
                     var multiAsset = lovelaceWithMultiAsset.MultiAsset;
@@ -424,31 +571,145 @@ namespace Panoptes.Infrastructure.Services
                         {
                             var policyHex = Convert.ToHexString(policy).ToLowerInvariant();
                             
-                            assets.Add(new
+                            // Get asset names from the policy
+                            if (multiAsset.Value.TryGetValue(policy, out var policyAssets) && policyAssets?.Value != null)
                             {
-                                PolicyId = policyHex,
-                                Name = "Token" // Simplified - asset name decoding is complex
-                            });
+                                foreach (var assetName in policyAssets.Value.Keys)
+                                {
+                                    var assetNameHex = Convert.ToHexString(assetName).ToLowerInvariant();
+                                    
+                                    // Try to decode as UTF-8, but keep hex as source of truth
+                                    string? assetNameUtf8 = null;
+                                    try
+                                    {
+                                        var decoded = System.Text.Encoding.UTF8.GetString(assetName);
+                                        // Verify it's valid UTF-8 (no control chars or invalid sequences)
+                                        if (decoded.All(c => !char.IsControl(c) || char.IsWhiteSpace(c)))
+                                            assetNameUtf8 = decoded;
+                                    }
+                                    catch { /* Invalid UTF-8, keep null */ }
+                                    
+                                    if (policyAssets.Value.TryGetValue(assetName, out var quantity))
+                                    {
+                                        assets.Add(new
+                                        {
+                                            PolicyId = policyHex,
+                                            NameHex = assetNameHex,
+                                            NameUTF8 = assetNameUtf8,
+                                            Quantity = quantity
+                                        });
+                                    }
+                                }
+                            }
                         }
                     }
                 }
+                else if (amount != null)
+                {
+                    // Handle other amount types (e.g., plain Lovelace, Coin, etc.)
+                    _logger?.LogWarning($"Unknown amount type: {amount.GetType().FullName} at address {addressHex}");
+                    _logger?.LogWarning($"  Attempting alternate parsing methods...");
+                    
+                    // Try to extract lovelace using reflection as fallback
+                    var amountType = amount.GetType();
+                    
+                    // Check for Coin property/method
+                    var coinProperty = amountType.GetProperty("Coin");
+                    if (coinProperty != null)
+                    {
+                        var coinValue = coinProperty.GetValue(amount);
+                        if (coinValue is ulong coinLovelace)
+                        {
+                            lovelace = coinLovelace;
+                            _logger?.LogWarning($"  Extracted {lovelace} lovelace from Coin property");
+                            totalOutputLovelace += lovelace;
+                        }
+                    }
+                    
+                    // Try to convert to ulong if possible
+                    if (lovelace == 0)
+                    {
+                        try
+                        {
+                            // Try direct conversion
+                            var convertedValue = Convert.ToUInt64(amount);
+                            lovelace = convertedValue;
+                            _logger?.LogWarning($"  Converted amount to ulong: {lovelace} lovelace");
+                            totalOutputLovelace += lovelace;
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger?.LogWarning($"  Failed to convert amount to ulong: {ex.Message}");
+                        }
+                    }
+                }
+                else
+                {
+                    _logger?.LogError($"Amount is null for output at address {addressHex}");
+                }
+
+                // CRITICAL DIAGNOSTIC: Check for suspicious 0-value outputs
+                // On Cardano, outputs MUST have minimum ADA (usually ~1 ADA)
+                // If we see 0, it means our parser failed to read the value correctly
+                if (lovelace == 0 && assets.Count == 0)
+                {
+                    _logger?.LogWarning($"⚠️ SUSPICIOUS ZERO VALUE DETECTED - Parsing may have failed!");
+                    _logger?.LogWarning($"  Address: {addressHex} (Bech32: {ConvertToBech32Address(addressHex)})");
+                    _logger?.LogWarning($"  Raw Amount Type: {amount?.GetType().FullName ?? "null"}");
+                    _logger?.LogWarning($"  Amount is LovelaceWithMultiAsset: {amount is LovelaceWithMultiAsset}");
+                    
+                    // Try alternate parsing methods
+                    if (amount != null)
+                    {
+                        _logger?.LogWarning($"  Amount ToString: {amount}");
+                        _logger?.LogWarning($"  Amount object dump: {System.Text.Json.JsonSerializer.Serialize(amount)}");
+                    }
+                    
+                    _logger?.LogWarning($"  Assets found: {assets.Count}");
+                    _logger?.LogWarning($"  OutputIndex in transaction: {outputs.IndexOf(output)}");
+                    _logger?.LogWarning($"  Total outputs in tx: {outputs.Count}");
+                    _logger?.LogWarning("  ⚠️ This output will be HIDDEN from webhook payload - potential data loss!");
+                    
+                    continue;
+                }
+                
+                // Additional safety check: Warn if lovelace is suspiciously low but non-zero
+                if (lovelace > 0 && lovelace < 1_000_000) // Less than 1 ADA
+                {
+                    _logger?.LogWarning($"Low ADA output detected: {lovelace} lovelace ({lovelace / 1_000_000.0:F6} ADA) at {addressHex}");
+                }
+
+                // Convert hex address to Bech32
+                var bech32Address = ConvertToBech32Address(addressHex);
 
                 outputDetails.Add(new
                 {
-                    Address = addressHex,
+                    Address = bech32Address,
+                    AddressHex = addressHex,
                     Amount = new
                     {
                         Lovelace = lovelace,
                         Ada = Math.Round(lovelace / 1_000_000.0, 2)
                     },
-                    Assets = assets
+                    Assets = assets,
+                    // CRITICAL: IsChange = null when input hydration is disabled
+                    // Reason: Without knowing input addresses, we CANNOT determine if this is change
+                    // Default false would be a lie (implying "this is a payment to recipient")
+                    // Default true would be a lie (implying "this is change back to sender")
+                    // null = "We don't know - developer must determine from context"
+                    // 
+                    // For bot developers: Treat null as "potential payment" to be safe
+                    // False positive (alerting on change) is better than false negative (missing real payment)
+                    IsChange = (bool?)null
                 });
             }
 
-            // Calculate balances (outputs - inputs per address)
-            var balances = new Dictionary<string, long>();
+            // FIX #3: Calculate TotalReceived per address (OUTPUT ONLY - NOT net balance)
+            // WARNING: This is NOT a balance calculation (which requires Input - Output)
+            // This shows how much ADA each address RECEIVED in this transaction
+            var totalReceivedPerAddress = new Dictionary<string, long>();
             
-            // Outputs add to balance
+            // Sum all outputs per address
             foreach (var output in outputDetails)
             {
                 var outputAddr = ((dynamic)output).Address.ToString();
@@ -456,29 +717,32 @@ namespace Panoptes.Infrastructure.Services
                 
                 if (!string.IsNullOrEmpty(outputAddr))
                 {
-                    if (!balances.ContainsKey(outputAddr))
-                        balances[outputAddr] = 0;
-                    balances[outputAddr] += (long)outputLovelace;
+                    if (!totalReceivedPerAddress.ContainsKey(outputAddr))
+                        totalReceivedPerAddress[outputAddr] = 0;
+                    totalReceivedPerAddress[outputAddr] += (long)outputLovelace;
                 }
             }
             
-            // Format balances as ADA strings with +/- signs
-            var balancesFormatted = balances
+            // Format as ADA strings (no +/- signs - this is absolute received amount)
+            var totalReceivedFormatted = totalReceivedPerAddress
                 .Where(b => b.Value != 0)
                 .ToDictionary(
                     b => b.Key,
                     b => {
                         var ada = b.Value / 1_000_000.0;
-                        var sign = ada > 0 ? "+" : "";
-                        return $"{sign}{ada:F2} ADA";
+                        return $"{ada:F2} ADA";
                     }
                 );
 
-            // Build simplified input list (we don't have input amounts without fetching previous outputs)
+            // Build input list
+            // NOTE: Input amounts are NOT hydrated in this version
+            // Reason: Requires fetching previous transaction outputs (expensive blockchain queries)
+            // Workaround: Use TxHash + OutputIndex to query block explorer APIs if needed
             var inputDetails = inputs.Take(20).Select(input => new
             {
                 TxHash = Convert.ToHexString(input.TransactionId()).ToLowerInvariant(),
                 OutputIndex = input.Index()
+                // Amount: NOT AVAILABLE - requires querying previous tx outputs
             }).ToList();
 
             var fee = tx.Fee();
@@ -488,15 +752,40 @@ namespace Panoptes.Infrastructure.Services
                 Event = eventType,
                 TxHash = txHash,
                 
+                // Transaction metadata - use this to verify data completeness
+                Metadata = new
+                {
+                    MatchReason = matchReason,
+                    InputCount = inputs.Count,
+                    OutputCount = outputs.Count,
+                    OutputsIncluded = outputDetails.Count,
+                    InputsIncluded = inputDetails.Count,
+                    InputAmountsHydrated = false, // We don't fetch previous tx data
+                    TotalOutputAda = Math.Round(totalOutputLovelace / 1_000_000.0, 2),
+                    TruncationNote = inputs.Count > 20 || outputs.Count > 20 
+                        ? "Transaction has more than 20 inputs/outputs. Only first 20 shown." 
+                        : null,
+                    // CRITICAL SANITY CHECK: If OutputCount > OutputsIncluded AND TotalOutputAda is 0
+                    // This suggests we filtered outputs due to parsing failures (not just truncation)
+                    DataLossWarning = outputs.Count > outputDetails.Count && totalOutputLovelace == 0
+                        ? "⚠️ CRITICAL: Outputs were filtered due to 0 ADA values. This may indicate a parsing bug. Check logs for 'SUSPICIOUS ZERO VALUE' warnings."
+                        : outputs.Count > outputDetails.Count
+                        ? $"Note: {outputs.Count - outputDetails.Count} output(s) filtered (0 ADA values or truncation limit)"
+                        : null
+                },
+                
+                // WARNING: TotalReceived is OUTPUT-ONLY. Not a net balance calculation.
+                // Since InputAmountsHydrated=false, we cannot calculate true balance (In - Out)
+                // TotalReceived shows: "How much ADA this address received in outputs"
+                // For self-transfers, this does NOT mean the address "gained" this amount
+                TotalReceived = totalReceivedFormatted.Count > 0 ? totalReceivedFormatted : null,
+                
                 // Grouped fee information
                 Fees = new
                 {
                     Lovelace = fee,
                     Ada = Math.Round(fee / 1_000_000.0, 2)
                 },
-                
-                // Value-add: Calculated balances per address
-                Balances = balancesFormatted.Count > 0 ? balancesFormatted : null,
                 
                 // Detailed transaction data
                 Inputs = inputDetails,
@@ -510,16 +799,7 @@ namespace Panoptes.Infrastructure.Services
                     Height = blockHeight
                 },
                 
-                Timestamp = DateTime.UtcNow.ToString("o"),
-                
-                // Metadata
-                Metadata = new
-                {
-                    MatchReason = matchReason,
-                    InputCount = inputs.Count,
-                    OutputCount = outputs.Count,
-                    TotalOutputAda = Math.Round(totalOutputLovelace / 1_000_000.0, 2)
-                }
+                Timestamp = DateTime.UtcNow.ToString("o")
             };
         }
     }

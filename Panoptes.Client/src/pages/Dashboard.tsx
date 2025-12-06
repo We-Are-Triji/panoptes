@@ -15,13 +15,17 @@ const Dashboard: React.FC = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedSubscription, setSelectedSubscription] = useState<WebhookSubscription | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchSubscriptions = async () => {
     try {
       const subsData = await getSubscriptions();
       setSubscriptions(subsData);
-    } catch (error) {
+      setError(null);
+    } catch (error: any) {
       console.error("Error fetching subscriptions:", error);
+      const errorMsg = error.response?.data || error.message || "Failed to fetch subscriptions. Please check if the API server is running.";
+      setError(`API Error: ${errorMsg}`);
     }
   };
 
@@ -29,8 +33,11 @@ const Dashboard: React.FC = () => {
     try {
       const logsData = await getLogs();
       setLogs(logsData);
-    } catch (error) {
+      setError(null);
+    } catch (error: any) {
       console.error("Error fetching logs:", error);
+      const errorMsg = error.response?.data || error.message || "Failed to fetch delivery logs.";
+      setError(`API Error: ${errorMsg}`);
     }
   };
 
@@ -54,8 +61,11 @@ const Dashboard: React.FC = () => {
     try {
       await triggerTestEvent(id);
       fetchLogs();
-    } catch (error) {
+      setError(null);
+    } catch (error: any) {
       console.error("Error triggering test:", error);
+      const errorMsg = error.response?.data || error.message || "Failed to trigger test webhook.";
+      setError(`Test Failed: ${errorMsg}`);
     }
   };
 
@@ -76,8 +86,12 @@ const Dashboard: React.FC = () => {
       });
       setIsModalOpen(false);
       fetchSubscriptions();
-    } catch (error) {
+      setError(null);
+    } catch (error: any) {
       console.error("Error creating subscription:", error);
+      const errorMsg = error.response?.data || error.message || "Failed to create subscription. Check if the webhook URL is valid.";
+      setError(`Create Failed: ${errorMsg}`);
+      // Keep modal open so user can fix the error
     }
   };
 
@@ -93,8 +107,11 @@ const Dashboard: React.FC = () => {
       setIsEditModalOpen(false);
       setSelectedSubscription(null);
       fetchSubscriptions();
-    } catch (error) {
+      setError(null);
+    } catch (error: any) {
       console.error("Error updating subscription:", error);
+      const errorMsg = error.response?.data || error.message || "Failed to update subscription.";
+      setError(`Update Failed: ${errorMsg}`);
     }
   };
 
@@ -110,8 +127,12 @@ const Dashboard: React.FC = () => {
       setIsDeleteModalOpen(false);
       setSelectedSubscription(null);
       fetchSubscriptions();
-    } catch (error) {
+      setError(null);
+    } catch (error: any) {
       console.error("Error deleting subscription:", error);
+      const errorMsg = error.response?.data || error.message || "Failed to delete subscription.";
+      setError(`Delete Failed: ${errorMsg}`);
+      setIsDeleteModalOpen(false);
     }
   };
 
@@ -130,6 +151,37 @@ const Dashboard: React.FC = () => {
       </nav>
 
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        {/* Error Banner */}
+        {error && (
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-md p-4">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3 flex-1">
+                <h3 className="text-sm font-medium text-red-800">Connection Error</h3>
+                <p className="mt-1 text-sm text-red-700">{error}</p>
+                <p className="mt-2 text-xs text-red-600">
+                  Make sure the API server is running on port 5033. Try: <code className="bg-red-100 px-1 py-0.5 rounded">dotnet run --project Panoptes.Api</code>
+                </p>
+              </div>
+              <div className="ml-auto pl-3">
+                <button
+                  onClick={() => setError(null)}
+                  className="inline-flex text-red-400 hover:text-red-600"
+                >
+                  <span className="sr-only">Dismiss</span>
+                  <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        
         {/* Stats */}
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-3 mb-8">
           <StatCard 

@@ -61,12 +61,35 @@ using (var scope = app.Services.CreateScope())
     {
         var db = services.GetRequiredService<AppDbContext>();
         Console.WriteLine($"Using database at: {dbPath}");
-        db.Database.EnsureCreated();
-        Console.WriteLine("Database created successfully.");
+        
+        // For development: Delete and recreate if schema changes detected
+        // In production, you'd use proper migrations
+        if (File.Exists(dbPath))
+        {
+            try
+            {
+                // Test if schema is valid by querying
+                _ = db.WebhookSubscriptions.FirstOrDefault();
+                Console.WriteLine("Database schema is valid.");
+            }
+            catch (Exception schemaEx)
+            {
+                Console.WriteLine($"Schema mismatch detected: {schemaEx.Message}");
+                Console.WriteLine("Deleting old database and recreating with new schema...");
+                db.Database.EnsureDeleted();
+                db.Database.EnsureCreated();
+                Console.WriteLine("Database recreated successfully with new schema.");
+            }
+        }
+        else
+        {
+            db.Database.EnsureCreated();
+            Console.WriteLine("Database created successfully.");
+        }
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"An error occurred creating the DB: {ex.Message}");
+        Console.WriteLine($"An error occurred with the DB: {ex.Message}");
     }
 }
 
