@@ -26,6 +26,9 @@ namespace Panoptes.Infrastructure.Services
         private readonly IAppDbContext _dbContext;
         private readonly IWebhookDispatcher _dispatcher;
         private readonly ILogger<PanoptesReducer>? _logger;
+        
+        // Rate limit tracking: subscriptionId -> (webhooks in last minute, webhooks in last hour, timestamps)
+        private readonly Dictionary<Guid, (Queue<DateTime> minuteWindow, Queue<DateTime> hourWindow)> _rateLimitTracking = new();
 
         public PanoptesReducer(IAppDbContext dbContext, IWebhookDispatcher dispatcher, ILogger<PanoptesReducer>? logger = null)
         {
@@ -220,24 +223,21 @@ namespace Panoptes.Infrastructure.Services
 
                     if (shouldDispatch)
                     {
+                        // Check rate limits before dispatching
+                        if (!await CheckRateLimitAsync(sub))
+                        {
+                            _logger?.LogWarning("⚠️ Rate limit exceeded for {Name}, skipping webhook", sub.Name);
+                            continue;
+                        }
+                        
                         _logger?.LogInformation("🔔 Dispatching webhook to {Name} for {EventType}: {Reason}", 
                             sub.Name, sub.EventType, matchReason);
                             
-                        await DispatchWebhook(sub, new
-                        {
-                            Event = sub.EventType,
-                            MatchReason = matchReason,
-                            Slot = slot,
-                            BlockHash = blockHash,
-                            BlockHeight = blockHeight,
-                            TxHash = txHash,
-                            TxIndex = txIndex,
-                            InputCount = inputs.Count,
-                            OutputCount = outputs.Count,
-                            OutputAddresses = outputAddresses.Take(10).ToList(), // Limit for payload size
-                            PolicyIds = policyIds.Take(10).ToList(),
-                            Timestamp = DateTime.UtcNow
-                        });
+                        // Build enhanced payload with more details
+                        var payload = BuildEnhancedPayload(tx, txIndex, slot, blockHash, blockHeight, 
+                            txHash, inputs, outputs, outputAddresses, policyIds, sub.EventType ?? "Unknown", matchReason);
+                        
+                        await DispatchWebhook(sub, payload);
                     }
                 }
             }
@@ -325,6 +325,176 @@ namespace Panoptes.Infrastructure.Services
             }
 
             await _dbContext.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// Check if subscription has exceeded rate limits
+        /// </summary>
+        private async Task<bool> CheckRateLimitAsync(WebhookSubscription sub)
+        {
+            // If rate limits disabled (0), allow all
+            if (sub.MaxWebhooksPerMinute == 0 && sub.MaxWebhooksPerHour == 0)
+            {
+                return true;
+            }
+
+            var now = DateTime.UtcNow;
+            
+            // Initialize tracking for this subscription if needed
+            if (!_rateLimitTracking.ContainsKey(sub.Id))
+            {
+                _rateLimitTracking[sub.Id] = (new Queue<DateTime>(), new Queue<DateTime>());
+            }
+
+            var (minuteWindow, hourWindow) = _rateLimitTracking[sub.Id];
+
+            // Clean up old timestamps (older than 1 minute)
+            while (minuteWindow.Count > 0 && (now - minuteWindow.Peek()).TotalMinutes > 1)
+            {
+                minuteWindow.Dequeue();
+            }
+
+            // Clean up old timestamps (older than 1 hour)
+            while (hourWindow.Count > 0 && (now - hourWindow.Peek()).TotalHours > 1)
+            {
+                hourWindow.Dequeue();
+            }
+
+            // Check limits
+            if (sub.MaxWebhooksPerMinute > 0 && minuteWindow.Count >= sub.MaxWebhooksPerMinute)
+            {
+                return false;
+            }
+
+            if (sub.MaxWebhooksPerHour > 0 && hourWindow.Count >= sub.MaxWebhooksPerHour)
+            {
+                return false;
+            }
+
+            // Record this webhook
+            minuteWindow.Enqueue(now);
+            hourWindow.Enqueue(now);
+
+            return await Task.FromResult(true);
+        }
+
+        /// <summary>
+        /// Build enhanced webhook payload with comprehensive transaction details
+        /// </summary>
+        private object BuildEnhancedPayload(
+            TransactionBody tx,
+            int txIndex,
+            ulong slot,
+            string blockHash,
+            ulong blockHeight,
+            string txHash,
+            List<TransactionInput> inputs,
+            List<TransactionOutput> outputs,
+            HashSet<string> outputAddresses,
+            HashSet<string> policyIds,
+            string eventType,
+            string matchReason)
+        {
+            // Calculate total ADA from outputs
+            ulong totalOutputLovelace = 0;
+            var outputDetails = new List<object>();
+            
+            foreach (var output in outputs.Take(20)) // Increased limit
+            {
+                var addressBytes = output.Address();
+                var addressHex = addressBytes != null && addressBytes.Length > 0 
+                    ? Convert.ToHexString(addressBytes).ToLowerInvariant() 
+                    : "";
+
+                ulong lovelace = 0;
+                var assets = new List<object>();
+
+                var amount = output.Amount();
+                
+                // Try to get lovelace amount
+                try
+                {
+                    if (amount is LovelaceWithMultiAsset lovelaceWithMultiAsset)
+                    {
+                        lovelace = lovelaceWithMultiAsset.Lovelace();
+                        totalOutputLovelace += lovelace;
+
+                        var multiAsset = lovelaceWithMultiAsset.MultiAsset;
+                        if (multiAsset?.Value != null)
+                        {
+                            // Extract policy IDs (assets details are complex, keep it simple)
+                            var policyCount = 0;
+                            foreach (var policy in multiAsset.Value.Keys)
+                            {
+                                if (policyCount >= 5) break;
+                                
+                                var policyHex = Convert.ToHexString(policy).ToLowerInvariant();
+                                
+                                // Add a simple asset entry with just the policy ID
+                                // Detailed asset enumeration is complex with TokenBundleOutput
+                                assets.Add(new
+                                {
+                                    PolicyId = policyHex,
+                                    AssetName = "multiple",
+                                    Quantity = 0L // Not available without complex parsing
+                                });
+                                
+                                policyCount++;
+                            }
+                        }
+                    }
+                }
+                catch
+                {
+                    // If we can't parse the amount, just skip it
+                }
+
+                outputDetails.Add(new
+                {
+                    Address = addressHex,
+                    Lovelace = lovelace,
+                    Ada = lovelace / 1_000_000.0, // Convert to ADA
+                    Assets = assets
+                });
+            }
+
+            // Extract input details
+            var inputDetails = inputs.Take(20).Select(input => new
+            {
+                TxHash = Convert.ToHexString(input.TransactionId()).ToLowerInvariant(),
+                OutputIndex = input.Index()
+            }).ToList();
+
+            return new
+            {
+                Event = eventType,
+                MatchReason = matchReason,
+                
+                // Block Info
+                Slot = slot,
+                BlockHash = blockHash,
+                BlockHeight = blockHeight,
+                Timestamp = DateTime.UtcNow,
+                
+                // Transaction Info
+                TxHash = txHash,
+                TxIndex = txIndex,
+                Fee = tx.Fee(), // Transaction fee in lovelace
+                
+                // Inputs/Outputs Summary
+                InputCount = inputs.Count,
+                OutputCount = outputs.Count,
+                TotalOutputAda = totalOutputLovelace / 1_000_000.0,
+                TotalOutputLovelace = totalOutputLovelace,
+                
+                // Detailed Lists
+                Inputs = inputDetails,
+                Outputs = outputDetails,
+                
+                // Addresses & Assets (legacy fields for backward compatibility)
+                OutputAddresses = outputAddresses.Take(10).ToList(),
+                PolicyIds = policyIds.Take(10).ToList()
+            };
         }
     }
 }

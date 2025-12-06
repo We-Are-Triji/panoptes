@@ -68,7 +68,11 @@ const Dashboard: React.FC = () => {
         eventType: data.eventType,
         isActive: true,
         targetAddress: null,
-        policyId: null
+        policyId: null,
+        maxWebhooksPerMinute: 60,
+        maxWebhooksPerHour: 1000,
+        enableBatching: false,
+        batchWindowSeconds: 10
       });
       setIsModalOpen(false);
       fetchSubscriptions();

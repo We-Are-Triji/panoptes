@@ -13,6 +13,12 @@ namespace Panoptes.Core.Entities
         public string SecretKey { get; set; } = string.Empty;
         public bool IsActive { get; set; }
         public DateTime CreatedAt { get; set; }
+        
+        // Rate Limiting
+        public int MaxWebhooksPerMinute { get; set; } = 60;
+        public int MaxWebhooksPerHour { get; set; } = 1000;
+        public bool EnableBatching { get; set; } = false;
+        public int BatchWindowSeconds { get; set; } = 10;
 
         public bool Matches(string? address, string? policyId)
         {

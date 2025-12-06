@@ -8,6 +8,10 @@ export interface WebhookSubscription {
     secretKey: string;
     isActive: boolean;
     createdAt: string;
+    maxWebhooksPerMinute: number;
+    maxWebhooksPerHour: number;
+    enableBatching: boolean;
+    batchWindowSeconds: number;
 }
 
 export interface DeliveryLog {
