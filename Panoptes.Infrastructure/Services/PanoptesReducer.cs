@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Panoptes.Core.Entities;
 using Panoptes.Core.Interfaces;
-using Argus.Sync;
+using Saib.Argus;
 using System.Linq;
 using System.Threading.Tasks;
 

@@ -17,7 +17,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 // Register Configuration
-builder.Services.Configure<PanoptesConfig>(builder.Configuration.GetSection("Panoptes"));
+builder.Services.Configure<PanoptesConfig>(builder.Configuration.GetSection("Argus"));
 
 // Register Persistence
 var dbPath = Path.Combine(Directory.GetCurrentDirectory(), "panoptes.db");

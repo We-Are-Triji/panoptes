@@ -5,7 +5,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Panoptes.Core.Interfaces;
 using Panoptes.Infrastructure.Configurations;
 using Panoptes.Infrastructure.Services;
-using Argus.Sync;
+using Saib.Argus;
+using Grpc.Net.Client;
 using System;
 using System.Linq;
 using System.Threading;
@@ -36,12 +37,10 @@ namespace Panoptes.Api.Workers
             {
                 try
                 {
-                    _logger.LogInformation("Connecting to Demeter Argus at {Url}", _config.DemeterUrl);
+                    _logger.LogInformation("Connecting to Demeter Argus via UtxoRPC at {Url}", _config.GrpcEndpoint);
 
-                    // Initialize Argus Client
-                    // Assuming ArgusClient takes url and apiKey in constructor or options
-                    // Adjust based on actual library signature
-                    using var client = new ArgusClient(_config.DemeterUrl, _config.DemeterApiKey);
+                    // Initialize Argus Client with UtxoRPC
+                    using var client = new ArgusClient(_config.GrpcEndpoint, _config.ApiKey);
 
                     using (var scope = _serviceProvider.CreateScope())
                     {
