@@ -30,6 +30,7 @@ dist/
 *.db
 *.db-shm
 *.db-wal
+*.db-journal
 
 # OS generated files
 .DS_Store
@@ -46,3 +47,6 @@ coverage/
 
 # Logs
 *.log
+
+dotnet-install.sh
+packages-microsoft-prod.deb

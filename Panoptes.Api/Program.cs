@@ -1,11 +1,9 @@
 using Microsoft.EntityFrameworkCore;
-using Panoptes.Core.External;
 using Panoptes.Core.Interfaces;
 using Panoptes.Infrastructure.Persistence;
 using Panoptes.Infrastructure.Services;
 using Panoptes.Infrastructure.Configurations;
 using Panoptes.Api.Workers;
-using Argus.Sync;
 using System;
 using System.IO;
 
