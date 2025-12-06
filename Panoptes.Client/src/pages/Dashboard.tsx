@@ -1,15 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { getSubscriptions, getLogs, createSubscription, triggerTestEvent } from '../services/api';
+import { getSubscriptions, getLogs, createSubscription, triggerTestEvent, updateSubscription, deleteSubscription } from '../services/api';
 import { WebhookSubscription, DeliveryLog } from '../types';
 import StatCard from '../components/StatCard';
 import SubscriptionTable from '../components/SubscriptionTable';
 import LogViewer from '../components/LogViewer';
 import CreateSubscriptionModal from '../components/CreateSubscriptionModal';
+import EditSubscriptionModal from '../components/EditSubscriptionModal';
+import ConfirmationModal from '../components/ConfirmationModal';
 
 const Dashboard: React.FC = () => {
   const [subscriptions, setSubscriptions] = useState<WebhookSubscription[]>([]);
   const [logs, setLogs] = useState<DeliveryLog[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [selectedSubscription, setSelectedSubscription] = useState<WebhookSubscription | null>(null);
 
   const fetchSubscriptions = async () => {
     try {
@@ -72,6 +77,40 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  const handleEdit = (subscription: WebhookSubscription) => {
+    setSelectedSubscription(subscription);
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditSave = async (data: Partial<WebhookSubscription>) => {
+    if (!selectedSubscription) return;
+    try {
+      await updateSubscription(selectedSubscription.id, data);
+      setIsEditModalOpen(false);
+      setSelectedSubscription(null);
+      fetchSubscriptions();
+    } catch (error) {
+      console.error("Error updating subscription:", error);
+    }
+  };
+
+  const handleDeleteClick = (subscription: WebhookSubscription) => {
+    setSelectedSubscription(subscription);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!selectedSubscription) return;
+    try {
+      await deleteSubscription(selectedSubscription.id);
+      setIsDeleteModalOpen(false);
+      setSelectedSubscription(null);
+      fetchSubscriptions();
+    } catch (error) {
+      console.error("Error deleting subscription:", error);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-100">
       <nav className="bg-white shadow-sm">
@@ -118,7 +157,12 @@ const Dashboard: React.FC = () => {
                 New Subscription
               </button>
             </div>
-            <SubscriptionTable subscriptions={subscriptions} onTest={handleTest} />
+            <SubscriptionTable 
+              subscriptions={subscriptions} 
+              onTest={handleTest} 
+              onEdit={handleEdit}
+              onDelete={handleDeleteClick}
+            />
           </div>
 
           {/* Right Column: Logs (1/3 width) */}
@@ -133,6 +177,32 @@ const Dashboard: React.FC = () => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onCreate={handleCreate}
+      />
+
+      {/* Edit Subscription Modal */}
+      <EditSubscriptionModal
+        isOpen={isEditModalOpen}
+        subscription={selectedSubscription}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setSelectedSubscription(null);
+        }}
+        onSave={handleEditSave}
+      />
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={isDeleteModalOpen}
+        title="Delete Subscription"
+        message={`Are you sure you want to delete "${selectedSubscription?.name}"? This action cannot be undone and all associated logs will be orphaned.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        confirmVariant="danger"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => {
+          setIsDeleteModalOpen(false);
+          setSelectedSubscription(null);
+        }}
       />
     </div>
   );

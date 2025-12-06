@@ -30,4 +30,13 @@ export const triggerTestEvent = async (id: string): Promise<DeliveryLog> => {
     return response.data;
 };
 
+export const updateSubscription = async (id: string, data: Partial<WebhookSubscription>): Promise<WebhookSubscription> => {
+    const response = await api.put<WebhookSubscription>(`/Subscriptions/${id}`, data);
+    return response.data;
+};
+
+export const deleteSubscription = async (id: string): Promise<void> => {
+    await api.delete(`/Subscriptions/${id}`);
+};
+
 export default api;
