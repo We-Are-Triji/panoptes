@@ -11,6 +11,8 @@ import ConfirmationModal from '../components/ConfirmationModal';
 const Dashboard: React.FC = () => {
   const [subscriptions, setSubscriptions] = useState<WebhookSubscription[]>([]);
   const [logs, setLogs] = useState<DeliveryLog[]>([]);
+  const [totalLogs, setTotalLogs] = useState<number>(0);
+  const [isConnected, setIsConnected] = useState<boolean>(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -22,22 +24,27 @@ const Dashboard: React.FC = () => {
       const subsData = await getSubscriptions();
       setSubscriptions(subsData);
       setError(null);
+      setIsConnected(true);
     } catch (error: any) {
       console.error("Error fetching subscriptions:", error);
       const errorMsg = error.response?.data || error.message || "Failed to fetch subscriptions. Please check if the API server is running.";
       setError(`API Error: ${errorMsg}`);
+      setIsConnected(false);
     }
   };
 
   const fetchLogs = async () => {
     try {
       const logsData = await getLogs();
-      setLogs(logsData);
+      setLogs(logsData.logs);
+      setTotalLogs(logsData.totalCount);
       setError(null);
+      setIsConnected(true);
     } catch (error: any) {
       console.error("Error fetching logs:", error);
       const errorMsg = error.response?.data || error.message || "Failed to fetch delivery logs.";
       setError(`API Error: ${errorMsg}`);
+      setIsConnected(false);
     }
   };
 
@@ -182,6 +189,18 @@ const Dashboard: React.FC = () => {
           </div>
         )}
         
+        {/* Connection Status Banner */}
+        {!isConnected && (
+          <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-md p-4">
+            <div className="flex items-center">
+              <svg className="h-5 w-5 text-yellow-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              <span className="text-sm font-medium text-yellow-800">Backend Disconnected - Displaying cached data</span>
+            </div>
+          </div>
+        )}
+        
         {/* Stats */}
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-3 mb-8">
           <StatCard 
@@ -191,7 +210,7 @@ const Dashboard: React.FC = () => {
           />
           <StatCard 
             title="Total Events" 
-            value={logs.length}
+            value={totalLogs}
             icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>}
           />
           <StatCard 

@@ -12,6 +12,10 @@ export interface WebhookSubscription {
     maxWebhooksPerHour: number;
     enableBatching: boolean;
     batchWindowSeconds: number;
+    webhooksInLastMinute?: number;
+    webhooksInLastHour?: number;
+    lastWebhookAt?: string | null;
+    isRateLimited?: boolean;
 }
 
 export interface DeliveryLog {

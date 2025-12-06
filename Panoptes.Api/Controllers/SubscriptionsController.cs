@@ -63,7 +63,33 @@ namespace Panoptes.Api.Controllers
         {
             try
             {
-                return await _dbContext.WebhookSubscriptions.ToListAsync();
+                var subscriptions = await _dbContext.WebhookSubscriptions.ToListAsync();
+                
+                // Calculate rate limit status for each subscription
+                var now = DateTime.UtcNow;
+                foreach (var sub in subscriptions)
+                {
+                    var logsInLastMinute = await _dbContext.DeliveryLogs
+                        .Where(l => l.SubscriptionId == sub.Id && l.AttemptedAt >= now.AddMinutes(-1))
+                        .CountAsync();
+                    
+                    var logsInLastHour = await _dbContext.DeliveryLogs
+                        .Where(l => l.SubscriptionId == sub.Id && l.AttemptedAt >= now.AddHours(-1))
+                        .CountAsync();
+                    
+                    var lastLog = await _dbContext.DeliveryLogs
+                        .Where(l => l.SubscriptionId == sub.Id)
+                        .OrderByDescending(l => l.AttemptedAt)
+                        .FirstOrDefaultAsync();
+                    
+                    sub.WebhooksInLastMinute = logsInLastMinute;
+                    sub.WebhooksInLastHour = logsInLastHour;
+                    sub.LastWebhookAt = lastLog?.AttemptedAt;
+                    sub.IsRateLimited = (sub.MaxWebhooksPerMinute > 0 && logsInLastMinute >= sub.MaxWebhooksPerMinute) ||
+                                       (sub.MaxWebhooksPerHour > 0 && logsInLastHour >= sub.MaxWebhooksPerHour);
+                }
+                
+                return subscriptions;
             }
             catch (Exception ex)
             {
@@ -73,19 +99,20 @@ namespace Panoptes.Api.Controllers
         }
 
         [HttpGet("/logs")]
-        public async Task<ActionResult<System.Collections.Generic.IEnumerable<DeliveryLog>>> GetLogs(
+        public async Task<ActionResult> GetLogs(
             [FromQuery] int? skip = 0,
             [FromQuery] int? take = 50)
         {
             try
             {
+                var totalCount = await _dbContext.DeliveryLogs.CountAsync();
                 var logs = await _dbContext.DeliveryLogs
                     .OrderByDescending(l => l.AttemptedAt)
                     .Skip(skip ?? 0)
                     .Take(Math.Min(take ?? 50, 100)) // Max 100 per request
                     .ToListAsync();
 
-                return Ok(logs);
+                return Ok(new { logs, totalCount });
             }
             catch (Exception ex)
             {
@@ -135,6 +162,27 @@ namespace Panoptes.Api.Controllers
                 {
                     return NotFound($"Subscription with ID {id} not found.");
                 }
+
+                // Calculate rate limit status
+                var now = DateTime.UtcNow;
+                var logsInLastMinute = await _dbContext.DeliveryLogs
+                    .Where(l => l.SubscriptionId == subscription.Id && l.AttemptedAt >= now.AddMinutes(-1))
+                    .CountAsync();
+                
+                var logsInLastHour = await _dbContext.DeliveryLogs
+                    .Where(l => l.SubscriptionId == subscription.Id && l.AttemptedAt >= now.AddHours(-1))
+                    .CountAsync();
+                
+                var lastLog = await _dbContext.DeliveryLogs
+                    .Where(l => l.SubscriptionId == subscription.Id)
+                    .OrderByDescending(l => l.AttemptedAt)
+                    .FirstOrDefaultAsync();
+                
+                subscription.WebhooksInLastMinute = logsInLastMinute;
+                subscription.WebhooksInLastHour = logsInLastHour;
+                subscription.LastWebhookAt = lastLog?.AttemptedAt;
+                subscription.IsRateLimited = (subscription.MaxWebhooksPerMinute > 0 && logsInLastMinute >= subscription.MaxWebhooksPerMinute) ||
+                                           (subscription.MaxWebhooksPerHour > 0 && logsInLastHour >= subscription.MaxWebhooksPerHour);
 
                 return Ok(subscription);
             }

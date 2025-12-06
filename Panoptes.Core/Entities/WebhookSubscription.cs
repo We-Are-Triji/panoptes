@@ -19,6 +19,12 @@ namespace Panoptes.Core.Entities
         public int MaxWebhooksPerHour { get; set; } = 1000;
         public bool EnableBatching { get; set; } = false;
         public int BatchWindowSeconds { get; set; } = 10;
+        
+        // Rate Limit Status (not persisted, calculated at runtime)
+        public int WebhooksInLastMinute { get; set; } = 0;
+        public int WebhooksInLastHour { get; set; } = 0;
+        public DateTime? LastWebhookAt { get; set; }
+        public bool IsRateLimited { get; set; } = false;
 
         public bool Matches(string? address, string? policyId)
         {

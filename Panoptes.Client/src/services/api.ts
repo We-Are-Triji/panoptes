@@ -20,11 +20,11 @@ export const createSubscription = async (data: Omit<WebhookSubscription, 'id' | 
     return response.data;
 };
 
-export const getLogs = async (skip?: number, take?: number): Promise<DeliveryLog[]> => {
+export const getLogs = async (skip?: number, take?: number): Promise<{ logs: DeliveryLog[], totalCount: number }> => {
     const params = new URLSearchParams();
     if (skip !== undefined) params.append('skip', skip.toString());
     if (take !== undefined) params.append('take', take.toString());
-    const response = await api.get<DeliveryLog[]>(`/logs?${params.toString()}`);
+    const response = await api.get<{ logs: DeliveryLog[], totalCount: number }>(`/logs?${params.toString()}`);
     return response.data;
 };
 

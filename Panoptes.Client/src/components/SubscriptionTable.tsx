@@ -19,6 +19,7 @@ const SubscriptionTable: React.FC<SubscriptionTableProps> = ({ subscriptions, on
                             <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider max-w-[200px]">Target URL</th>
                             <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Event Type</th>
                             <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rate Limit</th>
                             <th scope="col" className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                         </tr>
                     </thead>
@@ -35,13 +36,48 @@ const SubscriptionTable: React.FC<SubscriptionTableProps> = ({ subscriptions, on
                                     </span>
                                 </td>
                                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                        sub.isActive 
-                                            ? 'bg-green-100 text-green-800' 
-                                            : 'bg-gray-100 text-gray-600'
-                                    }`}>
-                                        {sub.isActive ? 'Active' : 'Inactive'}
-                                    </span>
+                                    <div className="flex flex-col gap-1">
+                                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                            sub.isActive 
+                                                ? 'bg-green-100 text-green-800' 
+                                                : 'bg-gray-100 text-gray-600'
+                                        }`}>
+                                            {sub.isActive ? 'Active' : 'Inactive'}
+                                        </span>
+                                        {sub.isRateLimited && (
+                                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800" title="Rate limit exceeded">
+                                                🚫 Limited
+                                            </span>
+                                        )}
+                                    </div>
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-500">
+                                    <div className="space-y-1">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-gray-600">Min:</span>
+                                            <span className={`font-mono ${
+                                                (sub.webhooksInLastMinute || 0) >= sub.maxWebhooksPerMinute 
+                                                    ? 'text-red-600 font-bold' 
+                                                    : (sub.webhooksInLastMinute || 0) >= sub.maxWebhooksPerMinute * 0.8 
+                                                    ? 'text-yellow-600' 
+                                                    : 'text-green-600'
+                                            }`}>
+                                                {sub.webhooksInLastMinute || 0}/{sub.maxWebhooksPerMinute}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-gray-600">Hour:</span>
+                                            <span className={`font-mono ${
+                                                (sub.webhooksInLastHour || 0) >= sub.maxWebhooksPerHour 
+                                                    ? 'text-red-600 font-bold' 
+                                                    : (sub.webhooksInLastHour || 0) >= sub.maxWebhooksPerHour * 0.8 
+                                                    ? 'text-yellow-600' 
+                                                    : 'text-green-600'
+                                            }`}>
+                                                {sub.webhooksInLastHour || 0}/{sub.maxWebhooksPerHour}
+                                            </span>
+                                        </div>
+                                    </div>
                                 </td>
                                 <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
                                     <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
