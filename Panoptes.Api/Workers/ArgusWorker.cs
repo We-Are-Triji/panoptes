@@ -39,8 +39,13 @@ namespace Panoptes.Api.Workers
                 {
                     _logger.LogInformation("Connecting to Demeter Argus via UtxoRPC at {Url}", _config.GrpcEndpoint);
 
-                    // Initialize Argus Client with UtxoRPC
-                    using var client = new ArgusClient(_config.GrpcEndpoint, _config.ApiKey);
+                    // Initialize U5CProvider
+                    var settings = new U5CProviderSettings
+                    {
+                        Endpoint = _config.GrpcEndpoint,
+                        Headers = { { "dmtr-api-key", _config.ApiKey } }
+                    };
+                    using var provider = new U5CProvider(settings);
 
                     using (var scope = _serviceProvider.CreateScope())
                     {
@@ -60,12 +65,19 @@ namespace Panoptes.Api.Workers
                             startSlot = savedSlot;
                             _logger.LogInformation("Resuming from checkpoint slot {Slot}", startSlot);
                         }
+                        
+                        if (startSlot == null)
+                        {
+                            var tip = await provider.GetTipAsync(stoppingToken);
+                            startSlot = tip.Slot;
+                            _logger.LogInformation("No checkpoint or config found. Starting from Tip: {Slot}", startSlot);
+                        }
                         else
                         {
-                            _logger.LogInformation("Starting sync from config slot {Slot}", startSlot?.ToString() ?? "Tip");
+                            _logger.LogInformation("Starting sync from slot {Slot}", startSlot);
                         }
 
-                        await client.StartSyncAsync(reducer, startSlot, stoppingToken);
+                        await provider.StartAsync(reducer, startSlot.Value, stoppingToken);
                     }
                 }
                 catch (Exception ex)
