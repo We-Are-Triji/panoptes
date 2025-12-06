@@ -6,5 +6,17 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
+    proxy: {
+      '/Subscriptions': {
+        target: 'http://localhost:5033',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/logs': {
+        target: 'http://localhost:5033',
+        changeOrigin: true,
+        secure: false,
+      }
+    }
   }
 })

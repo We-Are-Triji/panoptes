@@ -1,3 +1,4 @@
+using System.Net.Http;
 using Panoptes.Core.Entities;
 using Panoptes.Core.Interfaces;
 using System;

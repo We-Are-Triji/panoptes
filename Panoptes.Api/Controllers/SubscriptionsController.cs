@@ -43,18 +43,34 @@ namespace Panoptes.Api.Controllers
         [HttpGet]
         public async Task<ActionResult<System.Collections.Generic.IEnumerable<WebhookSubscription>>> GetSubscriptions()
         {
-            return await _dbContext.WebhookSubscriptions.ToListAsync();
+            try
+            {
+                return await _dbContext.WebhookSubscriptions.ToListAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error getting subscriptions: {ex}");
+                return StatusCode(500, ex.Message);
+            }
         }
 
         [HttpGet("/logs")]
         public async Task<ActionResult<System.Collections.Generic.IEnumerable<DeliveryLog>>> GetLogs()
         {
-            var logs = await _dbContext.DeliveryLogs
-                .OrderByDescending(l => l.AttemptedAt)
-                .Take(50)
-                .ToListAsync();
+            try
+            {
+                var logs = await _dbContext.DeliveryLogs
+                    .OrderByDescending(l => l.AttemptedAt)
+                    .Take(50)
+                    .ToListAsync();
 
-            return Ok(logs);
+                return Ok(logs);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error getting logs: {ex}");
+                return StatusCode(500, ex.Message);
+            }
         }
 
         [HttpPost("test/{id}")]

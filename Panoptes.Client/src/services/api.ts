@@ -4,7 +4,7 @@ import { WebhookSubscription, DeliveryLog } from '../types';
 // Assuming the backend runs on port 5000 (http) or 5001 (https). 
 // Adjust the baseURL as needed.
 const api = axios.create({
-    baseURL: 'http://localhost:5000',
+    // baseURL: 'http://localhost:5000', // Removed to use relative path (Vite proxy)
     headers: {
         'Content-Type': 'application/json',
     },

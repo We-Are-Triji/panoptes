@@ -3,6 +3,8 @@ using Panoptes.Core.External;
 using Panoptes.Core.Interfaces;
 using Panoptes.Infrastructure.Persistence;
 using Panoptes.Infrastructure.Services;
+using System;
+using System.IO;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,8 +14,9 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 // Register Persistence
+var dbPath = Path.Combine(Directory.GetCurrentDirectory(), "panoptes.db");
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite("Data Source=panoptes.db"));
+    options.UseSqlite($"Data Source={dbPath}"));
 
 builder.Services.AddScoped<IAppDbContext>(provider => provider.GetRequiredService<AppDbContext>());
 
@@ -33,6 +36,11 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.UseCors(policy => policy
+    .AllowAnyHeader()
+    .AllowAnyMethod()
+    .SetIsOriginAllowed(origin => true)
+    .AllowCredentials());
 app.UseAuthorization();
 
 app.MapControllers();
@@ -40,8 +48,18 @@ app.MapControllers();
 // Ensure database is created (optional but helpful for this context)
 using (var scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.EnsureCreated();
+    var services = scope.ServiceProvider;
+    try
+    {
+        var db = services.GetRequiredService<AppDbContext>();
+        Console.WriteLine($"Using database at: {dbPath}");
+        db.Database.EnsureCreated();
+        Console.WriteLine("Database created successfully.");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"An error occurred creating the DB: {ex.Message}");
+    }
 }
 
 app.Run();
