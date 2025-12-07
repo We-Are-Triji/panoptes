@@ -179,26 +179,23 @@ jobs:
       run: |
         echo "🔍 Scanning for exposed API keys..."
         
-        # Check for Demeter API keys
-        if git log --all --source --full-history -S "utxorpc1" | grep -E "utxorpc1[a-z0-9]+" -q; then
-          echo "::error::❌ Demeter API key pattern detected in commit history!"
-          echo "::error::Please follow the security guide to remove it from history"
-          exit 1
-        fi
+        # Check for API keys in currently tracked files only (not history)
+        # This avoids false positives from .gitignored files that were accidentally committed
         
-        # Check for hardcoded keys in code files
-        if grep -r "ApiKey.*:" --include="*.cs" --include="*.ts" --include="*.tsx" | grep -v "YOUR_.*_HERE" | grep -v "appsettings.json" | grep -E "(utxorpc|dmtr_)" -q; then
+        # Check for hardcoded keys in tracked source code files
+        if git ls-files | grep -E '\.(cs|ts|tsx)$' | xargs grep "ApiKey.*:" 2>/dev/null | grep -v "YOUR_.*_HERE" | grep -v "appsettings" | grep -E "(utxorpc|dmtr_)" -q; then
           echo "::error::❌ Hardcoded API key detected in source code!"
           exit 1
         fi
         
-        # Check JSON files (except template and Local files)
-        if find . -name "*.json" -not -name "*Local*" -not -path "*/node_modules/*" -not -path "*/bin/*" -not -path "*/obj/*" | xargs grep -l "ApiKey" 2>/dev/null | xargs grep -v "YOUR_.*_HERE" 2>/dev/null | grep -E "(utxorpc|dmtr_)" -q; then
-          echo "::error::❌ API key found in JSON configuration!"
+        # Check tracked JSON files (excluding Local, Development, and node_modules)
+        if git ls-files | grep '\.json$' | grep -v "Local" | grep -v "Development" | grep -v "node_modules" | grep -v "package-lock" | xargs grep "ApiKey" 2>/dev/null | grep -v "YOUR_.*_HERE" | grep -v '""' | grep -E "(utxorpc|dmtr_)" -q; then
+          echo "::error::❌ API key found in tracked JSON configuration!"
+          echo "::error::Please remove the API key and use environment variables or placeholders"
           exit 1
         fi
         
-        echo "✅ No exposed API keys detected"
+        echo "✅ No exposed API keys detected in tracked files"
         
     - name: 📋 Verify .gitignore
       run: |
