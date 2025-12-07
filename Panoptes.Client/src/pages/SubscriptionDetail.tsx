@@ -5,6 +5,7 @@ import { WebhookSubscription, DeliveryLog } from '../types';
 import DeliveryLogsTable from '../components/DeliveryLogsTable';
 import EditSubscriptionModal from '../components/EditSubscriptionModal';
 import ConfirmationModal from '../components/ConfirmationModal';
+import Pagination from '../components/Pagination';
 
 const SubscriptionDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -13,6 +14,8 @@ const SubscriptionDetail: React.FC = () => {
   const [subscription, setSubscription] = useState<WebhookSubscription | null>(null);
   const [logs, setLogs] = useState<DeliveryLog[]>([]);
   const [totalLogs, setTotalLogs] = useState<number>(0);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [itemsPerPage] = useState<number>(50);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -38,9 +41,10 @@ const SubscriptionDetail: React.FC = () => {
 
   const fetchLogs = async () => {
     if (!id) return;
-    console.log('[SubscriptionDetail] Fetching logs for subscription:', id);
+    console.log('[SubscriptionDetail] Fetching logs for subscription:', id, 'page:', currentPage);
     try {
-      const logsData = await getSubscriptionLogs(id, 0, 100);
+      const skip = (currentPage - 1) * itemsPerPage;
+      const logsData = await getSubscriptionLogs(id, skip, itemsPerPage);
       console.log('[SubscriptionDetail] Logs data:', logsData);
       
       // Backend now consistently returns { logs, totalCount }
@@ -70,7 +74,11 @@ const SubscriptionDetail: React.FC = () => {
     // Refresh logs every 3 seconds
     const interval = setInterval(fetchLogs, 3000);
     return () => clearInterval(interval);
-  }, [id]);
+  }, [id, currentPage]); // Refetch when page changes
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
 
   const handleTest = async () => {
     if (!id) return;

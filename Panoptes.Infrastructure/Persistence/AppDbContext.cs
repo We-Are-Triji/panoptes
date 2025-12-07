@@ -44,6 +44,17 @@ namespace Panoptes.Infrastructure.Persistence
                     
                 entity.Property(e => e.Status)
                     .HasConversion<string>();
+                
+                // Performance indexes for rate limit queries
+                entity.HasIndex(e => e.SubscriptionId)
+                    .HasDatabaseName("IX_DeliveryLogs_SubscriptionId");
+                
+                entity.HasIndex(e => e.AttemptedAt)
+                    .HasDatabaseName("IX_DeliveryLogs_AttemptedAt");
+                
+                // Composite index for optimized rate limit calculations
+                entity.HasIndex(e => new { e.SubscriptionId, e.AttemptedAt })
+                    .HasDatabaseName("IX_DeliveryLogs_SubscriptionId_AttemptedAt");
             });
         }
     }
