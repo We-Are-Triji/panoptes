@@ -29,6 +29,17 @@ namespace Panoptes.Infrastructure.Services
         
         // Rate limit tracking: subscriptionId -> (webhooks in last minute, webhooks in last hour, timestamps)
         private readonly Dictionary<Guid, (Queue<DateTime> minuteWindow, Queue<DateTime> hourWindow)> _rateLimitTracking = new();
+        
+        // Catch-up mode detection
+        private DateTime _lastBlockProcessedAt = DateTime.UtcNow;
+        private bool _isCatchingUp = false;
+        private int _consecutiveFastBlocks = 0;
+        
+        // Webhook batching: subscriptionId -> list of pending webhooks
+        private readonly Dictionary<Guid, List<object>> _pendingWebhooks = new();
+        private DateTime _lastBatchFlushAt = DateTime.UtcNow;
+        private const int BATCH_SIZE_DURING_CATCHUP = 10; // Max webhooks per subscription during catch-up
+        private const int BATCH_FLUSH_INTERVAL_SECONDS = 5; // Flush batches every 5 seconds during catch-up
 
         public PanoptesReducer(IAppDbContext dbContext, IWebhookDispatcher dispatcher, ILogger<PanoptesReducer>? logger = null)
         {
@@ -42,11 +53,38 @@ namespace Panoptes.Infrastructure.Services
             var slot = block.Header().HeaderBody().Slot();
             var blockHash = block.Header().Hash();
             var blockHeight = block.Header().HeaderBody().BlockNumber();
+            
+            // Detect catch-up mode: if processing blocks very fast, we're catching up
+            var now = DateTime.UtcNow;
+            var timeSinceLastBlock = (now - _lastBlockProcessedAt).TotalSeconds;
+            _lastBlockProcessedAt = now;
+            
+            // If processing blocks faster than 0.5 seconds each, likely catching up
+            if (timeSinceLastBlock < 0.5)
+            {
+                _consecutiveFastBlocks++;
+                if (_consecutiveFastBlocks > 10 && !_isCatchingUp)
+                {
+                    _isCatchingUp = true;
+                    _logger?.LogWarning("🚀 CATCH-UP MODE DETECTED - Enabling webhook batching to prevent rate limit exhaustion");
+                }
+            }
+            else
+            {
+                _consecutiveFastBlocks = 0;
+                if (_isCatchingUp)
+                {
+                    _isCatchingUp = false;
+                    await FlushAllBatchesAsync(); // Flush any remaining batched webhooks
+                    _logger?.LogInformation("✅ CATCH-UP COMPLETE - Resuming real-time webhook delivery");
+                }
+            }
 
             // Only log every 100 blocks to reduce spam during sync
             if (blockHeight % 100 == 0)
             {
-                _logger?.LogInformation("Processing block at slot {Slot}, height {Height}", slot, blockHeight);
+                var mode = _isCatchingUp ? "[CATCH-UP]" : "[REAL-TIME]";
+                _logger?.LogInformation("{Mode} Processing block at slot {Slot}, height {Height}", mode, slot, blockHeight);
             }
 
             // Fetch all active subscriptions
@@ -79,6 +117,13 @@ namespace Panoptes.Infrastructure.Services
                         txIndex++;
                     }
                 }
+            }
+            
+            // During catch-up, flush batches periodically
+            if (_isCatchingUp && (now - _lastBatchFlushAt).TotalSeconds >= BATCH_FLUSH_INTERVAL_SECONDS)
+            {
+                await FlushAllBatchesAsync();
+                _lastBatchFlushAt = now;
             }
 
             // Update Checkpoint (both slot AND hash for proper resume)
@@ -223,21 +268,51 @@ namespace Panoptes.Infrastructure.Services
 
                     if (shouldDispatch)
                     {
-                        // Check rate limits before dispatching
-                        if (!await CheckRateLimitAsync(sub))
-                        {
-                            _logger?.LogWarning("⚠️ Rate limit exceeded for {Name}, skipping webhook", sub.Name);
-                            continue;
-                        }
-                        
-                        _logger?.LogInformation("🔔 Dispatching webhook to {Name} for {EventType}: {Reason}", 
-                            sub.Name, sub.EventType, matchReason);
-                            
                         // Build enhanced payload with more details
                         var payload = BuildEnhancedPayload(tx, txIndex, slot, blockHash, blockHeight, 
                             txHash, inputs, outputs, outputAddresses, policyIds, sub.EventType ?? "Unknown", matchReason);
                         
-                        await DispatchWebhook(sub, payload);
+                        // During catch-up, batch webhooks instead of dispatching immediately
+                        if (_isCatchingUp)
+                        {
+                            // Add to batch
+                            if (!_pendingWebhooks.ContainsKey(sub.Id))
+                            {
+                                _pendingWebhooks[sub.Id] = new List<object>();
+                            }
+                            
+                            _pendingWebhooks[sub.Id].Add(payload);
+                            
+                            // If batch is full, send the most recent one and clear
+                            if (_pendingWebhooks[sub.Id].Count >= BATCH_SIZE_DURING_CATCHUP)
+                            {
+                                var mostRecentPayload = _pendingWebhooks[sub.Id].Last();
+                                _pendingWebhooks[sub.Id].Clear();
+                                
+                                _logger?.LogInformation("📦 [BATCH] Sending 1 of {Count} webhooks for {Name} (keeping most recent)", 
+                                    BATCH_SIZE_DURING_CATCHUP, sub.Name);
+                                
+                                // Check rate limits before dispatching
+                                if (await CheckRateLimitAsync(sub))
+                                {
+                                    await DispatchWebhook(sub, mostRecentPayload);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Real-time mode: dispatch immediately with rate limiting
+                            if (!await CheckRateLimitAsync(sub))
+                            {
+                                _logger?.LogWarning("⚠️ Rate limit exceeded for {Name}, skipping webhook", sub.Name);
+                                continue;
+                            }
+                            
+                            _logger?.LogInformation("🔔 Dispatching webhook to {Name} for {EventType}: {Reason}", 
+                                sub.Name, sub.EventType, matchReason);
+                            
+                            await DispatchWebhook(sub, payload);
+                        }
                     }
                 }
             }
@@ -330,6 +405,53 @@ namespace Panoptes.Infrastructure.Services
         /// <summary>
         /// Check if subscription has exceeded rate limits
         /// </summary>
+        /// <summary>
+        /// Flush all pending batched webhooks (called when exiting catch-up mode)
+        /// </summary>
+        private async Task FlushAllBatchesAsync()
+        {
+            if (_pendingWebhooks.Count == 0)
+            {
+                return;
+            }
+            
+            _logger?.LogInformation("📤 Flushing {Count} batched webhook queues...", _pendingWebhooks.Count);
+            
+            foreach (var (subId, payloads) in _pendingWebhooks.ToList())
+            {
+                if (payloads.Count == 0)
+                {
+                    continue;
+                }
+                
+                // Get subscription
+                var sub = await _dbContext.WebhookSubscriptions.FindAsync(subId);
+                if (sub == null || !sub.IsActive)
+                {
+                    continue;
+                }
+                
+                // Send only the most recent payload from the batch
+                var mostRecentPayload = payloads.Last();
+                
+                _logger?.LogInformation("📤 Flushing {Name}: Sending 1 most recent of {Count} batched webhooks", 
+                    sub.Name, payloads.Count);
+                
+                // Check rate limit and dispatch
+                if (await CheckRateLimitAsync(sub))
+                {
+                    await DispatchWebhook(sub, mostRecentPayload);
+                }
+                else
+                {
+                    _logger?.LogWarning("⚠️ Rate limit exceeded for {Name} during batch flush, skipping", sub.Name);
+                }
+            }
+            
+            // Clear all batches
+            _pendingWebhooks.Clear();
+        }
+        
         private async Task<bool> CheckRateLimitAsync(WebhookSubscription sub)
         {
             // If rate limits disabled (0), allow all

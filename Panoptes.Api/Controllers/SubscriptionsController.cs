@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Panoptes.Core.Entities;
 using Panoptes.Core.Interfaces;
+using Panoptes.Api.DTOs;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
@@ -65,28 +66,43 @@ namespace Panoptes.Api.Controllers
             {
                 var subscriptions = await _dbContext.WebhookSubscriptions.ToListAsync();
                 
-                // Calculate rate limit status for each subscription
+                // Optimized: Calculate rate limit status with a single grouped query
                 var now = DateTime.UtcNow;
+                var oneMinuteAgo = now.AddMinutes(-1);
+                var oneHourAgo = now.AddHours(-1);
+                
+                // Get all rate limit stats in one query
+                var rateLimitStats = await _dbContext.DeliveryLogs
+                    .Where(l => l.AttemptedAt >= oneHourAgo)
+                    .GroupBy(l => l.SubscriptionId)
+                    .Select(g => new
+                    {
+                        SubscriptionId = g.Key,
+                        InLastMinute = g.Count(l => l.AttemptedAt >= oneMinuteAgo),
+                        InLastHour = g.Count(),
+                        LastAttempt = g.Max(l => l.AttemptedAt)
+                    })
+                    .ToDictionaryAsync(x => x.SubscriptionId);
+                
+                // Apply stats to subscriptions
                 foreach (var sub in subscriptions)
                 {
-                    var logsInLastMinute = await _dbContext.DeliveryLogs
-                        .Where(l => l.SubscriptionId == sub.Id && l.AttemptedAt >= now.AddMinutes(-1))
-                        .CountAsync();
-                    
-                    var logsInLastHour = await _dbContext.DeliveryLogs
-                        .Where(l => l.SubscriptionId == sub.Id && l.AttemptedAt >= now.AddHours(-1))
-                        .CountAsync();
-                    
-                    var lastLog = await _dbContext.DeliveryLogs
-                        .Where(l => l.SubscriptionId == sub.Id)
-                        .OrderByDescending(l => l.AttemptedAt)
-                        .FirstOrDefaultAsync();
-                    
-                    sub.WebhooksInLastMinute = logsInLastMinute;
-                    sub.WebhooksInLastHour = logsInLastHour;
-                    sub.LastWebhookAt = lastLog?.AttemptedAt;
-                    sub.IsRateLimited = (sub.MaxWebhooksPerMinute > 0 && logsInLastMinute >= sub.MaxWebhooksPerMinute) ||
-                                       (sub.MaxWebhooksPerHour > 0 && logsInLastHour >= sub.MaxWebhooksPerHour);
+                    if (rateLimitStats.TryGetValue(sub.Id, out var stats))
+                    {
+                        sub.WebhooksInLastMinute = stats.InLastMinute;
+                        sub.WebhooksInLastHour = stats.InLastHour;
+                        sub.LastWebhookAt = stats.LastAttempt;
+                        sub.IsRateLimited = (sub.MaxWebhooksPerMinute > 0 && stats.InLastMinute >= sub.MaxWebhooksPerMinute) ||
+                                           (sub.MaxWebhooksPerHour > 0 && stats.InLastHour >= sub.MaxWebhooksPerHour);
+                    }
+                    else
+                    {
+                        // No logs in the time window
+                        sub.WebhooksInLastMinute = 0;
+                        sub.WebhooksInLastHour = 0;
+                        sub.LastWebhookAt = null;
+                        sub.IsRateLimited = false;
+                    }
                 }
                 
                 return subscriptions;
@@ -99,7 +115,7 @@ namespace Panoptes.Api.Controllers
         }
 
         [HttpGet("/logs")]
-        public async Task<ActionResult> GetLogs(
+        public async Task<ActionResult<LogsResponse>> GetLogs(
             [FromQuery] int? skip = 0,
             [FromQuery] int? take = 50)
         {
@@ -112,7 +128,7 @@ namespace Panoptes.Api.Controllers
                     .Take(Math.Min(take ?? 50, 100)) // Max 100 per request
                     .ToListAsync();
 
-                return Ok(new { logs, totalCount });
+                return Ok(new LogsResponse { Logs = logs, TotalCount = totalCount });
             }
             catch (Exception ex)
             {
@@ -122,7 +138,7 @@ namespace Panoptes.Api.Controllers
         }
 
         [HttpGet("{id}/logs")]
-        public async Task<ActionResult> GetSubscriptionLogs(
+        public async Task<ActionResult<LogsResponse>> GetSubscriptionLogs(
             Guid id,
             [FromQuery] int? skip = 0,
             [FromQuery] int? take = 50)
@@ -147,7 +163,7 @@ namespace Panoptes.Api.Controllers
                     .Take(Math.Min(take ?? 50, 100)) // Max 100 per request
                     .ToListAsync();
 
-                var result = new { logs, totalCount };
+                var result = new LogsResponse { Logs = logs, TotalCount = totalCount };
                 Console.WriteLine($"[GetSubscriptionLogs] Returning {logs.Count} logs out of {totalCount} total");
                 return Ok(result);
             }
@@ -169,26 +185,37 @@ namespace Panoptes.Api.Controllers
                     return NotFound($"Subscription with ID {id} not found.");
                 }
 
-                // Calculate rate limit status
+                // Calculate rate limit status (optimized with single query)
                 var now = DateTime.UtcNow;
-                var logsInLastMinute = await _dbContext.DeliveryLogs
-                    .Where(l => l.SubscriptionId == subscription.Id && l.AttemptedAt >= now.AddMinutes(-1))
-                    .CountAsync();
+                var oneMinuteAgo = now.AddMinutes(-1);
+                var oneHourAgo = now.AddHours(-1);
                 
-                var logsInLastHour = await _dbContext.DeliveryLogs
-                    .Where(l => l.SubscriptionId == subscription.Id && l.AttemptedAt >= now.AddHours(-1))
-                    .CountAsync();
-                
-                var lastLog = await _dbContext.DeliveryLogs
-                    .Where(l => l.SubscriptionId == subscription.Id)
-                    .OrderByDescending(l => l.AttemptedAt)
+                var stats = await _dbContext.DeliveryLogs
+                    .Where(l => l.SubscriptionId == subscription.Id && l.AttemptedAt >= oneHourAgo)
+                    .GroupBy(l => l.SubscriptionId)
+                    .Select(g => new
+                    {
+                        InLastMinute = g.Count(l => l.AttemptedAt >= oneMinuteAgo),
+                        InLastHour = g.Count(),
+                        LastAttempt = g.Max(l => l.AttemptedAt)
+                    })
                     .FirstOrDefaultAsync();
                 
-                subscription.WebhooksInLastMinute = logsInLastMinute;
-                subscription.WebhooksInLastHour = logsInLastHour;
-                subscription.LastWebhookAt = lastLog?.AttemptedAt;
-                subscription.IsRateLimited = (subscription.MaxWebhooksPerMinute > 0 && logsInLastMinute >= subscription.MaxWebhooksPerMinute) ||
-                                           (subscription.MaxWebhooksPerHour > 0 && logsInLastHour >= subscription.MaxWebhooksPerHour);
+                if (stats != null)
+                {
+                    subscription.WebhooksInLastMinute = stats.InLastMinute;
+                    subscription.WebhooksInLastHour = stats.InLastHour;
+                    subscription.LastWebhookAt = stats.LastAttempt;
+                    subscription.IsRateLimited = (subscription.MaxWebhooksPerMinute > 0 && stats.InLastMinute >= subscription.MaxWebhooksPerMinute) ||
+                                               (subscription.MaxWebhooksPerHour > 0 && stats.InLastHour >= subscription.MaxWebhooksPerHour);
+                }
+                else
+                {
+                    subscription.WebhooksInLastMinute = 0;
+                    subscription.WebhooksInLastHour = 0;
+                    subscription.LastWebhookAt = null;
+                    subscription.IsRateLimited = false;
+                }
 
                 return Ok(subscription);
             }

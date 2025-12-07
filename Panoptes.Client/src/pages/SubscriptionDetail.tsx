@@ -43,16 +43,9 @@ const SubscriptionDetail: React.FC = () => {
       const logsData = await getSubscriptionLogs(id, 0, 100);
       console.log('[SubscriptionDetail] Logs data:', logsData);
       
-      // Handle both response formats: array or { logs, totalCount }
-      if (Array.isArray(logsData)) {
-        // Backend returned array directly (old format)
-        setLogs(logsData);
-        setTotalLogs(logsData.length);
-      } else {
-        // Backend returned { logs, totalCount } (new format)
-        setLogs(logsData.logs || []);
-        setTotalLogs(logsData.totalCount || 0);
-      }
+      // Backend now consistently returns { logs, totalCount }
+      setLogs(logsData.logs || []);
+      setTotalLogs(logsData.totalCount || 0);
       setError(null);
     } catch (error: any) {
       console.error("Error fetching logs:", error);
