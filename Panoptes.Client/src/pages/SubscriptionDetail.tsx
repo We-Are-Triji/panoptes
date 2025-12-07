@@ -368,10 +368,16 @@ const SubscriptionDetail: React.FC = () => {
               logs={logs || []} 
               showSubscriptionId={false}
               totalCount={totalLogs}
-              currentPage={1}
-              pageSize={100}
+              currentPage={currentPage}
+              pageSize={itemsPerPage}
             />
           </div>
+          <Pagination
+            currentPage={currentPage}
+            totalItems={totalLogs}
+            itemsPerPage={itemsPerPage}
+            onPageChange={handlePageChange}
+          />
         </div>
       </main>
 
