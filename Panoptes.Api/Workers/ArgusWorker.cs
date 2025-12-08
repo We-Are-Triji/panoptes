@@ -62,20 +62,26 @@ namespace Panoptes.Api.Workers
                         dbConfig.Network, dbConfig.GrpcEndpoint);
                     return (dbConfig.GrpcEndpoint, apiKey, dbConfig.Network);
                 }
-                catch (Exception ex)
+                catch (System.Security.Cryptography.CryptographicException ex)
                 {
-                    _logger.LogError(ex, "Failed to decrypt API key from database. Falling back to appsettings.");
+                    _logger.LogWarning("Failed to decrypt stored credentials (encryption keys changed). Clearing invalid data...");
+                    
+                    // Remove invalid encrypted data - user will need to reconfigure via GUI
+                    try
+                    {
+                        dbContext.DemeterConfigs.Remove(dbConfig);
+                        await dbContext.SaveChangesAsync(stoppingToken);
+                        _logger.LogInformation("Cleared invalid credentials from database. Please configure via Settings page.");
+                    }
+                    catch (Exception deleteEx)
+                    {
+                        _logger.LogError(deleteEx, "Failed to clear invalid credentials from database");
+                    }
                 }
             }
 
-            // Fallback to appsettings
-            if (!string.IsNullOrWhiteSpace(_config.GrpcEndpoint))
-            {
-                _logger.LogInformation("Using Demeter credentials from appsettings.json (fallback): Network={Network}, Endpoint={Endpoint}", 
-                    _config.Network, _config.GrpcEndpoint);
-                return (_config.GrpcEndpoint, _config.ApiKey, _config.Network);
-            }
-
+            // No valid credentials found - user must configure via GUI
+            _logger.LogWarning("No Demeter credentials configured. Please visit the Settings page to configure your API key.");
             return null;
         }
 
@@ -102,9 +108,9 @@ namespace Panoptes.Api.Workers
                         "  3. Enter your Demeter API credentials\n" +
                         "  4. ArgusWorker will start automatically\n" +
                         "\n" +
-                        "Checking again in 30 seconds...\n" +
+                        "Checking again in 5 seconds...\n" +
                         "═══════════════════════════════════════════════════════════════");
-                    await Task.Delay(30000, stoppingToken);
+                    await Task.Delay(5000, stoppingToken);
                     continue;
                 }
 

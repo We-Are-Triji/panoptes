@@ -109,6 +109,8 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     setError(null);
 
     try {
+      console.log('Saving credentials...', { grpcEndpoint, network, apiKeyLength: apiKey.length });
+      
       const response = await fetch('/setup/save-credentials', {
         method: 'POST',
         headers: {
@@ -121,11 +123,17 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
         }),
       });
 
+      console.log('Save response status:', response.status);
+
       if (!response.ok) {
         const data = await response.json();
+        console.error('Save failed:', data);
         setError(data.error || 'Failed to save credentials');
         return;
       }
+
+      const result = await response.json();
+      console.log('Save successful:', result);
 
       // Success - notify parent component
       onComplete();
@@ -145,8 +153,17 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8 max-w-2xl w-full mx-4">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8 max-w-2xl w-full mx-4 relative max-h-[90vh] overflow-y-auto">
+        <button
+          onClick={onComplete}
+          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+          aria-label="Close"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
             Welcome to Panoptes

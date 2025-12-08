@@ -17,11 +17,13 @@ namespace Panoptes.Api.Controllers
     {
         private readonly IAppDbContext _dbContext;
         private readonly IDataProtector _dataProtector;
+        private readonly ILogger<SetupController> _logger;
 
-        public SetupController(IAppDbContext dbContext, IDataProtectionProvider dataProtectionProvider)
+        public SetupController(IAppDbContext dbContext, IDataProtectionProvider dataProtectionProvider, ILogger<SetupController> logger)
         {
             _dbContext = dbContext;
-            _dataProtector = dataProtectionProvider.CreateProtector("DemeterConfig.ApiKey");
+            _dataProtector = dataProtectionProvider.CreateProtector("DemeterCredentials");
+            _logger = logger;
         }
 
         [HttpGet("status")]
@@ -104,40 +106,58 @@ namespace Panoptes.Api.Controllers
         [HttpPost("save-credentials")]
         public async Task<ActionResult> SaveCredentials([FromBody] DemeterCredentials credentials)
         {
+            _logger.LogInformation("SaveCredentials called: Network={Network}, Endpoint={Endpoint}, ApiKeyLength={Length}", 
+                credentials.Network, credentials.GrpcEndpoint, credentials.ApiKey?.Length ?? 0);
+
             if (string.IsNullOrWhiteSpace(credentials.GrpcEndpoint) || 
                 string.IsNullOrWhiteSpace(credentials.ApiKey))
             {
+                _logger.LogWarning("SaveCredentials failed: Missing required fields");
                 return BadRequest("GrpcEndpoint and ApiKey are required");
             }
 
-            // Deactivate any existing configs
-            var existingConfigs = await _dbContext.DemeterConfigs
-                .Where(c => c.IsActive)
-                .ToListAsync();
-
-            foreach (var config in existingConfigs)
+            try
             {
-                config.IsActive = false;
+                // Deactivate any existing configs
+                var existingConfigs = await _dbContext.DemeterConfigs
+                    .Where(c => c.IsActive)
+                    .ToListAsync();
+
+                _logger.LogInformation("Found {Count} existing active configs to deactivate", existingConfigs.Count);
+
+                foreach (var config in existingConfigs)
+                {
+                    config.IsActive = false;
+                }
+
+                // Encrypt API key
+                var encryptedApiKey = _dataProtector.Protect(credentials.ApiKey);
+                _logger.LogInformation("API key encrypted successfully");
+
+                // Create new config
+                var newConfig = new DemeterConfig
+                {
+                    GrpcEndpoint = credentials.GrpcEndpoint,
+                    ApiKeyEncrypted = encryptedApiKey,
+                    Network = credentials.Network ?? "Preprod",
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                    IsActive = true
+                };
+
+                _dbContext.DemeterConfigs.Add(newConfig);
+                await _dbContext.SaveChangesAsync();
+
+                _logger.LogInformation("✅ Credentials saved successfully to database: Network={Network}, Endpoint={Endpoint}", 
+                    newConfig.Network, newConfig.GrpcEndpoint);
+
+                return Ok(new { Message = "Credentials saved successfully. Worker will restart automatically." });
             }
-
-            // Encrypt API key
-            var encryptedApiKey = _dataProtector.Protect(credentials.ApiKey);
-
-            // Create new config
-            var newConfig = new DemeterConfig
+            catch (Exception ex)
             {
-                GrpcEndpoint = credentials.GrpcEndpoint,
-                ApiKeyEncrypted = encryptedApiKey,
-                Network = credentials.Network ?? "Preprod",
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow,
-                IsActive = true
-            };
-
-            _dbContext.DemeterConfigs.Add(newConfig);
-            await _dbContext.SaveChangesAsync();
-
-            return Ok(new { Message = "Credentials saved successfully. Worker will restart automatically." });
+                _logger.LogError(ex, "Failed to save credentials");
+                return StatusCode(500, new { Error = "Failed to save credentials", Details = ex.Message });
+            }
         }
 
         [HttpDelete("clear-credentials")]
