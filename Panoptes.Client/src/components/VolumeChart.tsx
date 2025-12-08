@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   XAxis,
   YAxis,
@@ -12,7 +12,7 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from '@/components/ui/chart';
-import { TimeRange } from '../hooks/useStatsData';
+import { TimeRange, isCustomTimeRange, BucketSize } from '../hooks/useStatsData';
 
 interface VolumeDataPoint {
   date: string;
@@ -33,11 +33,100 @@ const chartConfig: ChartConfig = {
   },
 };
 
+// Minimum pixels per data point to prevent overlap
+const MIN_WIDTH_PER_POINT = 20;
+// Minimum container width
+const MIN_CONTAINER_WIDTH = 400;
+// Maximum labels to show before scrolling is truly needed
+const MAX_COMFORTABLE_LABELS = 30;
+
+// Helper to determine bucket size from time range
+function getBucketSizeFromTimeRange(timeRange: TimeRange): BucketSize {
+  if (isCustomTimeRange(timeRange)) {
+    const diffMs = timeRange.endDate.getTime() - timeRange.startDate.getTime();
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+    
+    if (diffDays <= 3) return 'hour';
+    if (diffDays <= 90) return 'day';
+    if (diffDays <= 365) return 'week';
+    return 'month';
+  }
+  
+  return timeRange === '24h' ? 'hour' : 'day';
+}
+
+// Helper to determine bucket description based on time range
+function getBucketDescription(timeRange: TimeRange): string {
+  const bucketSize = getBucketSizeFromTimeRange(timeRange);
+  
+  switch (bucketSize) {
+    case 'hour':
+      return 'Hourly';
+    case 'day':
+      return 'Daily';
+    case 'week':
+      return 'Weekly';
+    case 'month':
+      return 'Monthly';
+  }
+}
+
+// Helper to determine X-axis interval based on time range and data length
+function getXAxisInterval(timeRange: TimeRange, dataLength: number): number | 'preserveStartEnd' {
+  if (dataLength === 0) return 'preserveStartEnd';
+  
+  const bucketSize = getBucketSizeFromTimeRange(timeRange);
+  
+  // Calculate ideal number of visible labels (8-12 is usually readable)
+  const idealLabelCount = 10;
+  
+  switch (bucketSize) {
+    case 'hour':
+      // For hourly data, show every few hours
+      return Math.max(1, Math.floor(dataLength / idealLabelCount));
+    case 'day':
+      // For daily data, show every few days
+      if (dataLength <= 14) return 'preserveStartEnd';
+      return Math.max(1, Math.floor(dataLength / idealLabelCount));
+    case 'week':
+      // For weekly data, show every 2-4 weeks
+      if (dataLength <= 12) return 'preserveStartEnd';
+      return Math.max(1, Math.floor(dataLength / idealLabelCount));
+    case 'month':
+      // For monthly data, show every month or every few months
+      if (dataLength <= 12) return 'preserveStartEnd';
+      return Math.max(1, Math.floor(dataLength / idealLabelCount));
+    default:
+      return 'preserveStartEnd';
+  }
+}
+
+// Calculate chart width based on data length
+function calculateChartWidth(dataLength: number): number {
+  if (dataLength <= MAX_COMFORTABLE_LABELS) {
+    return MIN_CONTAINER_WIDTH; // Use container width
+  }
+  // Calculate minimum width needed to prevent overlap
+  return Math.max(MIN_CONTAINER_WIDTH, dataLength * MIN_WIDTH_PER_POINT);
+}
+
+// Check if scrolling is needed
+function needsScrolling(dataLength: number): boolean {
+  return dataLength > MAX_COMFORTABLE_LABELS;
+}
+
 const VolumeChart: React.FC<VolumeChartProps> = ({
   data,
   timeRange,
   isLoading = false,
 }) => {
+  // Calculate chart dimensions
+  const chartMetrics = useMemo(() => {
+    const scrollNeeded = needsScrolling(data.length);
+    const chartWidth = calculateChartWidth(data.length);
+    return { scrollNeeded, chartWidth };
+  }, [data.length]);
+
   if (isLoading) {
     return (
       <div className="bg-white rounded-lg shadow border border-gray-200 p-6">
@@ -63,7 +152,10 @@ const VolumeChart: React.FC<VolumeChartProps> = ({
             Webhook Volume
           </h3>
           <p className="text-sm text-gray-400 mt-1">
-            {timeRange === '24h' ? 'Hourly' : 'Daily'} webhook activity
+            {getBucketDescription(timeRange)} webhook activity
+            {chartMetrics.scrollNeeded && (
+              <span className="ml-2 text-xs text-gray-300">(scroll to see more)</span>
+            )}
           </p>
         </div>
         <div className="text-right">
@@ -79,61 +171,92 @@ const VolumeChart: React.FC<VolumeChartProps> = ({
           <p>No data available for selected time range</p>
         </div>
       ) : (
-        <ChartContainer config={chartConfig} className="h-[300px] w-full">
-          <AreaChart
-            data={data}
-            margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+        <div 
+          className={`relative ${chartMetrics.scrollNeeded ? 'overflow-x-auto' : ''}`}
+          style={{ 
+            // Add scrollbar styling
+            scrollbarWidth: 'thin',
+            scrollbarColor: '#d1d5db #f3f4f6'
+          }}
+        >
+          {/* Scroll fade indicator for left side */}
+          {chartMetrics.scrollNeeded && (
+            <div 
+              className="absolute left-0 top-0 bottom-4 w-8 bg-gradient-to-r from-white to-transparent z-10 pointer-events-none"
+              style={{ opacity: 0.8 }}
+            />
+          )}
+          
+          <ChartContainer 
+            config={chartConfig} 
+            className="h-[300px]"
+            style={{ 
+              width: chartMetrics.scrollNeeded ? chartMetrics.chartWidth : '100%',
+              minWidth: chartMetrics.scrollNeeded ? chartMetrics.chartWidth : 'auto'
+            }}
           >
-            <defs>
-              <linearGradient id="volumeGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="hsl(147, 100%, 21%)" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="hsl(147, 100%, 21%)" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
-            <XAxis
-              dataKey="label"
-              tickLine={false}
-              axisLine={false}
-              tick={{ fontSize: 11, fill: '#9ca3af', fontFamily: 'Space Mono, monospace' }}
-              tickMargin={8}
-              interval={timeRange === '24h' ? 3 : 'preserveStartEnd'}
+            <AreaChart
+              data={data}
+              margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+            >
+              <defs>
+                <linearGradient id="volumeGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="hsl(147, 100%, 21%)" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="hsl(147, 100%, 21%)" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+              <XAxis
+                dataKey="label"
+                tickLine={false}
+                axisLine={false}
+                tick={{ fontSize: 11, fill: '#9ca3af', fontFamily: 'Space Mono, monospace' }}
+                tickMargin={8}
+                interval={getXAxisInterval(timeRange, data.length)}
+              />
+              <YAxis
+                domain={[0, yAxisMax]}
+                tickLine={false}
+                axisLine={false}
+                tick={{ fontSize: 11, fill: '#9ca3af', fontFamily: 'Space Mono, monospace' }}
+                tickMargin={8}
+                width={40}
+              />
+              <ChartTooltip
+                content={
+                  <ChartTooltipContent
+                    labelFormatter={(value) => `Time: ${value}`}
+                  />
+                }
+              />
+              <Area
+                type="monotone"
+                dataKey="count"
+                stroke="hsl(147, 100%, 21%)"
+                strokeWidth={2}
+                fill="url(#volumeGradient)"
+                dot={false}
+                activeDot={{
+                  r: 5,
+                  fill: 'hsl(147, 100%, 21%)',
+                  stroke: '#fff',
+                  strokeWidth: 2,
+                }}
+              />
+            </AreaChart>
+          </ChartContainer>
+          
+          {/* Scroll fade indicator for right side */}
+          {chartMetrics.scrollNeeded && (
+            <div 
+              className="absolute right-0 top-0 bottom-4 w-8 bg-gradient-to-l from-white to-transparent z-10 pointer-events-none"
+              style={{ opacity: 0.8 }}
             />
-            <YAxis
-              domain={[0, yAxisMax]}
-              tickLine={false}
-              axisLine={false}
-              tick={{ fontSize: 11, fill: '#9ca3af', fontFamily: 'Space Mono, monospace' }}
-              tickMargin={8}
-              width={40}
-            />
-            <ChartTooltip
-              content={
-                <ChartTooltipContent
-                  labelFormatter={(value) => `Time: ${value}`}
-                />
-              }
-            />
-            <Area
-              type="monotone"
-              dataKey="count"
-              stroke="hsl(147, 100%, 21%)"
-              strokeWidth={2}
-              fill="url(#volumeGradient)"
-              dot={false}
-              activeDot={{
-                r: 5,
-                fill: 'hsl(147, 100%, 21%)',
-                stroke: '#fff',
-                strokeWidth: 2,
-              }}
-            />
-          </AreaChart>
-        </ChartContainer>
+          )}
+        </div>
       )}
     </div>
   );
 };
 
 export default VolumeChart;
-
