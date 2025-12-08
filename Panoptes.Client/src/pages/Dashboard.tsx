@@ -10,6 +10,13 @@ import EditSubscriptionModal from '../components/EditSubscriptionModal';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { useSubscriptionFilters } from '../hooks/useSubscriptionFilters';
 
+interface SystemInfo {
+  network: string;
+  grpcEndpoint: string;
+  hasApiKey: boolean;
+  availableNetworks: string[];
+}
+
 const Dashboard: React.FC = () => {
   const [subscriptions, setSubscriptions] = useState<WebhookSubscription[]>([]);
   const [logs, setLogs] = useState<DeliveryLog[]>([]);
@@ -20,6 +27,7 @@ const Dashboard: React.FC = () => {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedSubscription, setSelectedSubscription] = useState<WebhookSubscription | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
 
   // Subscription filters
   const {
@@ -66,9 +74,20 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  const fetchSystemInfo = async () => {
+    try {
+      const response = await fetch('http://localhost:5186/health/system-info');
+      const data = await response.json();
+      setSystemInfo(data);
+    } catch (error) {
+      console.error("Error fetching system info:", error);
+    }
+  };
+
   useEffect(() => {
     fetchSubscriptions();
     fetchLogs();
+    fetchSystemInfo();
 
     // Refresh logs every 2 seconds for real-time feel
     const logInterval = setInterval(fetchLogs, 2000);
@@ -167,10 +186,28 @@ const Dashboard: React.FC = () => {
       <nav className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
-            <div className="flex">
+            <div className="flex items-center gap-4">
               <div className="flex-shrink-0 flex items-center">
                 <h1 className="text-xl font-bold text-gray-900">Panoptes Mission Control</h1>
               </div>
+              {systemInfo && (
+                <div className="flex items-center gap-2">
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                    systemInfo.network === 'Mainnet' 
+                      ? 'bg-green-100 text-green-800' 
+                      : systemInfo.network === 'Preprod'
+                      ? 'bg-blue-100 text-blue-800'
+                      : 'bg-purple-100 text-purple-800'
+                  }`}>
+                    {systemInfo.network}
+                  </span>
+                  {!systemInfo.hasApiKey && (
+                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800">
+                      ⚠️ No API Key
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
