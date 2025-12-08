@@ -17,12 +17,14 @@ namespace Panoptes.Api.Controllers
         private readonly IAppDbContext _dbContext;
         private readonly IWebhookDispatcher _dispatcher;
         private readonly PanoptesReducer _reducer;
+        private readonly ILogger<SubscriptionsController> _logger;
 
-        public SubscriptionsController(IAppDbContext dbContext, IWebhookDispatcher dispatcher, PanoptesReducer reducer)
+        public SubscriptionsController(IAppDbContext dbContext, IWebhookDispatcher dispatcher, PanoptesReducer reducer, ILogger<SubscriptionsController> logger)
         {
             _dbContext = dbContext;
             _dispatcher = dispatcher;
             _reducer = reducer;
+            _logger = logger;
         }
 
         /// <summary>
@@ -103,6 +105,18 @@ namespace Panoptes.Api.Controllers
         [HttpPost]
         public async Task<ActionResult<WebhookSubscription>> CreateSubscription(WebhookSubscription subscription)
         {
+            // Check for duplicate subscription name
+            if (!string.IsNullOrWhiteSpace(subscription.Name))
+            {
+                var existingSubscription = await _dbContext.WebhookSubscriptions
+                    .FirstOrDefaultAsync(s => s.Name == subscription.Name);
+                
+                if (existingSubscription != null)
+                {
+                    return BadRequest($"A subscription with the name '{subscription.Name}' already exists. Please use a different name.");
+                }
+            }
+
             // Validate TargetUrl
             if (string.IsNullOrWhiteSpace(subscription.TargetUrl) ||
                 !Uri.TryCreate(subscription.TargetUrl, UriKind.Absolute, out var uri) ||
@@ -145,7 +159,8 @@ namespace Panoptes.Api.Controllers
             _dbContext.WebhookSubscriptions.Add(subscription);
             await _dbContext.SaveChangesAsync();
             
-            Console.WriteLine($"Created subscription: {subscription.Name}, IsActive: {subscription.IsActive}, EventType: {subscription.EventType}");
+            _logger.LogInformation("Created subscription: {Name}, IsActive: {IsActive}, EventType: {EventType}", 
+                subscription.Name, subscription.IsActive, subscription.EventType);
 
             return CreatedAtAction(nameof(GetSubscriptions), new { id = subscription.Id }, subscription);
         }
@@ -204,7 +219,7 @@ namespace Panoptes.Api.Controllers
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error getting subscriptions: {ex}");
+                _logger.LogError(ex, "Error getting subscriptions");
                 return StatusCode(500, ex.Message);
             }
         }
@@ -227,7 +242,7 @@ namespace Panoptes.Api.Controllers
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error getting logs: {ex}");
+                _logger.LogError(ex, "Error getting logs");
                 return StatusCode(500, ex.Message);
             }
         }
@@ -259,12 +274,12 @@ namespace Panoptes.Api.Controllers
                     .ToListAsync();
 
                 var result = new LogsResponse { Logs = logs, TotalCount = totalCount };
-                Console.WriteLine($"[GetSubscriptionLogs] Returning {logs.Count} logs out of {totalCount} total");
+                _logger.LogDebug("[GetSubscriptionLogs] Returning {Count} logs out of {Total} total", logs.Count, totalCount);
                 return Ok(result);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error getting subscription logs: {ex}");
+                _logger.LogError(ex, "Error getting subscription logs");
                 return StatusCode(500, ex.Message);
             }
         }
@@ -319,7 +334,7 @@ namespace Panoptes.Api.Controllers
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error getting subscription: {ex}");
+                _logger.LogError(ex, "Error getting subscription");
                 return StatusCode(500, ex.Message);
             }
         }
@@ -384,6 +399,15 @@ namespace Panoptes.Api.Controllers
             // Update allowed fields (SecretKey is NOT updatable by client)
             if (!string.IsNullOrWhiteSpace(subscription.Name))
             {
+                // Check if the new name conflicts with another subscription
+                var duplicateSubscription = await _dbContext.WebhookSubscriptions
+                    .FirstOrDefaultAsync(s => s.Name == subscription.Name && s.Id != id);
+                
+                if (duplicateSubscription != null)
+                {
+                    return BadRequest($"A subscription with the name '{subscription.Name}' already exists. Please use a different name.");
+                }
+                
                 existingSub.Name = subscription.Name;
             }
             

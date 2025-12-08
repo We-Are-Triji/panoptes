@@ -13,7 +13,11 @@
     --card-foreground: 0 0% 3.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 3.9%;
+<<<<<<< HEAD
     --primary: 147 100% 21%;        /* Sentinel Green #006A33 */
+=======
+    --primary: 147 100% 21%;
+>>>>>>> refs/remotes/origin/main
     --primary-foreground: 240 100% 99%;
     --secondary: 0 0% 96.1%;
     --secondary-foreground: 0 0% 9%;
@@ -34,11 +38,19 @@
     --radius: 0.5rem;
   }
 
+<<<<<<< HEAD
   .dark {
     /* Panoptes Design System - Dark theme */
     --background: 0 0% 2%;          /* Void Black #050505 */
     --foreground: 240 100% 99%;     /* Ghost White #F8F8FF */
     --card: 0 0% 2%;
+=======
+  /* When `dark` class is present on the root (Tailwind's class strategy), use dark variables */
+  .dark {
+    --background: 0 0% 2%;          /* Void Black #050505 */
+    --foreground: 240 100% 99%;     /* Ghost White #F8F8FF */
+    --card: 0 0% 6%;
+>>>>>>> refs/remotes/origin/main
     --card-foreground: 240 100% 99%;
     --popover: 0 0% 4%;
     --popover-foreground: 240 100% 99%;
@@ -89,6 +101,84 @@
     background-color: rgba(248, 248, 255, 0.05);
   }
 }
+
+/* Utility overrides to ensure common Tailwind classes follow theme variables
+  This helps switch colors globally without editing every component. */
+.bg-white { background-color: hsl(var(--card)) !important; }
+.bg-gray-100 { background-color: hsl(var(--background)) !important; }
+.bg-gray-900 { background-color: hsl(var(--background)) !important; }
+.bg-gray-800 { background-color: hsl(var(--card)) !important; }
+.text-gray-900 { color: hsl(var(--foreground)) !important; }
+.text-gray-100 { color: hsl(var(--foreground)) !important; }
+.text-white { color: hsl(var(--foreground)) !important; }
+.border-gray-200 { border-color: hsl(var(--border)) !important; }
+.border-gray-900 { border-color: hsl(var(--border)) !important; }
+.shadow { box-shadow: 0 4px 6px -1px rgba(0,0,0,0.08) !important; }
+
+/* Make sure body uses the variable-driven background and text color */
+body { background-color: hsl(var(--background)); color: hsl(var(--foreground)); }
+
+/* Dark-mode fixes for specific components that use utility classes directly */
+/* Subscription empty state: Tailwind emits classes like bg-gray-50/50 and border-dashed border-gray-300 */
+.dark .bg-gray-50\/50 {
+  background-color: hsl(var(--card)) !important;
+}
+.dark .border-dashed.border-gray-300 {
+  background-color: hsl(var(--card)) !important;
+  border-color: hsl(var(--border)) !important;
+}
+.dark .border-dashed.border-gray-300 h3,
+.dark .bg-gray-50\/50 h3 {
+  color: hsl(var(--card-foreground)) !important;
+}
+.dark .border-dashed.border-gray-300 p,
+.dark .bg-gray-50\/50 p {
+  color: hsl(var(--card-foreground)) !important;
+}
+
+/* Ensure panels using bg-white become dark cards in dark mode and their text updates */
+.dark .bg-white {
+  /* Make white panels fully black in dark mode for stronger contrast (settings area) */
+  background-color: #000000 !important;
+  color: #ffffff !important;
+}
+.dark .bg-white .text-gray-900,
+.dark .bg-white h1,
+.dark .bg-white h2,
+.dark .bg-white h3,
+.dark .bg-white p,
+.dark .bg-white span {
+  color: #ffffff !important;
+}
+
+/* Dark-mode badge tweaks: make the light blue "Preprod" pill darker and its text readable */
+.dark .bg-blue-100 {
+  background-color: #083358 !important; /* deep blue */
+  color: #e6f4ff !important;
+}
+.dark .text-blue-800 {
+  color: #e6f4ff !important;
+}
+
+/* Ensure common page background utility follows theme variables */
+.bg-gray-50 { background-color: hsl(var(--background)) !important; }
+.dark .bg-gray-50 { background-color: hsl(var(--background)) !important; color: hsl(var(--foreground)) !important; }
+
+/* Dark-mode shadow overrides so panels/cards have visible black shadows */
+.dark .shadow {
+  box-shadow: 0 6px 18px rgba(0,0,0,0.6) !important;
+}
+.dark .shadow-sm {
+  box-shadow: 0 2px 6px rgba(0,0,0,0.45) !important;
+}
+.dark .shadow-md {
+  box-shadow: 0 8px 24px rgba(0,0,0,0.65) !important;
+}
+.dark .shadow-lg {
+  box-shadow: 0 12px 36px rgba(0,0,0,0.7) !important;
+}
+
+
 
 /* React DatePicker Custom Styles */
 .react-datepicker {
