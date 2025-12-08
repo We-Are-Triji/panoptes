@@ -113,7 +113,7 @@ namespace Panoptes.Api.Workers
                         log.NextRetryAt = null;
                         
                         // Track failure for circuit breaker
-                        await TrackFailure(log.Subscription, result.ResponseStatusCode, dbContext);
+                        TrackFailure(log.Subscription, result.ResponseStatusCode, dbContext);
                         
                         _logger.LogWarning("Webhook retry exhausted for log {LogId} after {RetryCount} attempts", 
                             log.Id, log.RetryCount);
@@ -183,7 +183,7 @@ namespace Panoptes.Api.Workers
         /// <summary>
         /// Track consecutive failures and implement circuit breaker logic
         /// </summary>
-        private async Task TrackFailure(WebhookSubscription subscription, int statusCode, IAppDbContext dbContext)
+        private void TrackFailure(WebhookSubscription subscription, int statusCode, IAppDbContext dbContext)
         {
             subscription.ConsecutiveFailures++;
             subscription.LastFailureAt = DateTime.UtcNow;

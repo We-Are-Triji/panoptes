@@ -805,15 +805,7 @@ namespace Panoptes.Infrastructure.Services
                     _logger?.LogWarning($"Unknown amount type: {amountType.FullName} at address {addressHex}");
                     _logger?.LogWarning($"  Attempting alternate parsing methods...");
                     
-                    // Strategy 1: Check if it's a plain ulong/uint64
-                    if (amount is ulong ulongAmount)
-                    {
-                        lovelace = ulongAmount;
-                        _logger?.LogWarning($"  ✅ Amount is plain ulong: {lovelace} lovelace");
-                        totalOutputLovelace += lovelace;
-                    }
-                    // Strategy 2: Check for Coin property/method (older Chrysalis versions)
-                    else
+                    // Strategy 1: Check for Coin property/method (older Chrysalis versions)
                     {
                         var coinProperty = amountType.GetProperty("Coin");
                         if (coinProperty != null)
