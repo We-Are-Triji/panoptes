@@ -137,7 +137,7 @@ namespace Panoptes.Api.Workers
                     };
                     
                     // Use our custom provider that handles UtxoRPC format correctly
-                    var provider = new PanoptesU5CProvider(endpoint, headers);
+                    var provider = new PanoptesU5CProvider(endpoint ?? string.Empty, headers);
 
                     using (var scope = _serviceProvider.CreateScope())
                     {
@@ -389,8 +389,8 @@ namespace Panoptes.Api.Workers
                         "Retrying in 5 seconds...\n" +
                         "═══════════════════════════════════════════════════════════════\n",
                         httpEx.Message, endpoint, 
-                        new Uri(endpoint).Host,
-                        new Uri(endpoint).Host,
+                        endpoint != null ? new Uri(endpoint).Host : "unknown",
+                        endpoint != null ? new Uri(endpoint).Host : "unknown",
                         endpoint);
                     await Task.Delay(5000, stoppingToken);
                 }

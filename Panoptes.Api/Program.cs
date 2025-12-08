@@ -21,9 +21,8 @@ builder.Services.AddSwaggerGen();
 builder.Services.Configure<PanoptesConfig>(builder.Configuration.GetSection("Argus"));
 
 // Register Data Protection for encrypting sensitive data (API keys)
-builder.Services.AddDataProtection()
-    .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(Directory.GetCurrentDirectory(), "keys")))
-    .SetApplicationName("Panoptes");
+builder.Services.AddDataProtection();
+// Keys are automatically persisted to ~/.aspnet/DataProtection-Keys/ by default
 
 // Register Persistence
 var dbPath = Path.Combine(Directory.GetCurrentDirectory(), "panoptes.db");
@@ -35,7 +34,7 @@ builder.Services.AddScoped<IAppDbContext>(provider => provider.GetRequiredServic
 // Register Services
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<IWebhookDispatcher, WebhookDispatcher>();
-builder.Services.AddSingleton<PanoptesReducer>(); // Singleton to share state across requests
+builder.Services.AddScoped<PanoptesReducer>(); // Scoped to allow access to scoped services
 
 // Register Workers
 builder.Services.AddHostedService<ArgusWorker>();
