@@ -456,6 +456,7 @@ namespace Panoptes.Api.Controllers
 
             // Reset circuit breaker, rate limit, and re-enable subscription
             sub.IsActive = true;
+            sub.PausedAt = null;
             sub.IsCircuitBroken = false;
             sub.CircuitBrokenReason = null;
             sub.ConsecutiveFailures = 0;
@@ -489,7 +490,10 @@ namespace Panoptes.Api.Controllers
             
             if (sub.IsActive)
             {
-                // Resuming - check for pending events
+                // Resuming - clear the paused timestamp
+                sub.PausedAt = null;
+                
+                // Check for pending events
                 var pendingEventCount = await _dbContext.DeliveryLogs
                     .CountAsync(l => l.SubscriptionId == id && l.Status == DeliveryStatus.Paused);
                 
@@ -513,6 +517,8 @@ namespace Panoptes.Api.Controllers
             }
             else
             {
+                // Pausing - set the paused timestamp
+                sub.PausedAt = DateTime.UtcNow;
                 _logger.LogInformation("⏸️ Subscription {Name} (ID: {Id}) paused", sub.Name, sub.Id);
             }
 
