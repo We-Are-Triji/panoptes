@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getSubscription, getSubscriptionLogs, updateSubscription, deleteSubscription, triggerTestEvent } from '../services/api';
+import { getSubscription, getSubscriptionLogs, updateSubscription, deleteSubscription, triggerTestEvent, toggleSubscriptionActive, resetSubscription } from '../services/api';
 import { WebhookSubscription, DeliveryLog } from '../types';
 import DeliveryLogsTable from '../components/DeliveryLogsTable';
 import EditSubscriptionModal from '../components/EditSubscriptionModal';
@@ -121,6 +121,32 @@ const SubscriptionDetail: React.FC = () => {
     }
   };
 
+  const handleToggleActive = async () => {
+    if (!id) return;
+    try {
+      await toggleSubscriptionActive(id);
+      fetchSubscription();
+      setError(null);
+    } catch (error: any) {
+      console.error("Error toggling subscription:", error);
+      const errorMsg = error.response?.data || error.message || "Failed to toggle subscription.";
+      setError(`Toggle Failed: ${errorMsg}`);
+    }
+  };
+
+  const handleReset = async () => {
+    if (!id) return;
+    try {
+      await resetSubscription(id);
+      fetchSubscription();
+      setError(null);
+    } catch (error: any) {
+      console.error("Error resetting subscription:", error);
+      const errorMsg = error.response?.data || error.message || "Failed to reset subscription.";
+      setError(`Reset Failed: ${errorMsg}`);
+    }
+  };
+
   const calculateSuccessRate = () => {
     if (!logs || logs.length === 0) return 0;
     // Exclude 429 (rate limit) from both success and failure counts - they're retriable
@@ -197,6 +223,43 @@ const SubscriptionDetail: React.FC = () => {
           <div className="px-6 py-5 border-b border-gray-200 flex justify-between items-center">
             <h2 className="text-lg font-medium text-gray-900">Subscription Details</h2>
             <div className="flex space-x-3">
+              {/* Toggle Active/Paused Button */}
+              {(() => {
+                const isDisabled = subscription.isRateLimited || subscription.isCircuitBroken;
+                if (isDisabled) {
+                  return (
+                    <button
+                      onClick={handleReset}
+                      className="px-4 py-2 bg-red-100 text-red-700 rounded-md text-sm font-medium hover:bg-red-200 flex items-center gap-2"
+                      title="Click to reset - clears rate limit and circuit breaker"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+                      </svg>
+                      Disabled - Click to Reset
+                    </button>
+                  );
+                }
+                return subscription.isActive ? (
+                  <button
+                    onClick={handleToggleActive}
+                    className="px-4 py-2 bg-green-100 text-green-700 rounded-md text-sm font-medium hover:bg-green-200 flex items-center gap-2"
+                    title="Click to pause - webhooks will stop, events will be queued"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                    Active
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleToggleActive}
+                    className="px-4 py-2 bg-amber-100 text-amber-700 rounded-md text-sm font-medium hover:bg-amber-200 flex items-center gap-2"
+                    title="Click to resume - queued events will be delivered"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                    Paused
+                  </button>
+                );
+              })()}
               <button
                 onClick={handleTest}
                 className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700"
@@ -221,12 +284,18 @@ const SubscriptionDetail: React.FC = () => {
             <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
               <div>
                 <dt className="text-sm font-medium text-gray-500">Status</dt>
-                <dd className="mt-1 text-sm text-gray-900">
-                  {subscription.isActive ? (
-                    <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">Active</span>
-                  ) : (
-                    <span className="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">Inactive</span>
-                  )}
+                <dd className="mt-1 text-sm text-gray-900 flex items-center gap-2">
+                  {(() => {
+                    const isDisabled = subscription.isRateLimited || subscription.isCircuitBroken;
+                    if (isDisabled) {
+                      return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">🚫 Disabled</span>;
+                    }
+                    return subscription.isActive ? (
+                      <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">Active</span>
+                    ) : (
+                      <span className="px-2 py-1 text-xs font-semibold rounded-full bg-amber-100 text-amber-800">⏸️ Paused</span>
+                    );
+                  })()}
                 </dd>
               </div>
               <div>
@@ -291,6 +360,37 @@ const SubscriptionDetail: React.FC = () => {
             </dl>
           </div>
         </div>
+
+        {/* Paused Banner */}
+        {subscription.isPaused && (
+          <div className="mb-6 bg-amber-50 border border-amber-300 rounded-md p-4">
+            <div className="flex items-start justify-between">
+              <div className="flex items-start">
+                <svg className="h-6 w-6 text-amber-600 mr-3 mt-0.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+                </svg>
+                <div className="flex-1">
+                  <span className="text-sm font-semibold text-amber-900">⏸️ Subscription Paused - Webhook Deliveries Halted</span>
+                  <p className="text-sm text-amber-800 mt-2">
+                    This subscription is currently paused. Events are still being recorded, but webhooks are not being sent to your endpoint.
+                    When you resume this subscription, all pending events will be delivered.
+                  </p>
+                  {subscription.pausedAt && (
+                    <p className="text-xs text-amber-700 mt-2">
+                      <strong>Paused since:</strong> {new Date(subscription.pausedAt).toLocaleString()}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={handleToggleActive}
+                className="ml-4 px-4 py-2 bg-amber-600 text-white text-sm font-medium rounded-md hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 whitespace-nowrap"
+              >
+                Resume Subscription
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Circuit Breaker Banner */}
         {subscription.isCircuitBroken && (
