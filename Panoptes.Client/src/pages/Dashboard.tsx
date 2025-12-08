@@ -243,6 +243,14 @@ const Dashboard: React.FC = () => {
                 </div>
               )}
             </div>
+            <div className="flex items-center">
+              <a
+                href="/settings"
+                className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+              >
+                ⚙️ Settings
+              </a>
+            </div>
           </div>
         </div>
       </nav>
