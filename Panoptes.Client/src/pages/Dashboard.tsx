@@ -317,7 +317,13 @@ const Dashboard: React.FC = () => {
               <h2 className="text-lg font-medium text-gray-900">Subscriptions</h2>
               <button 
                 onClick={() => setIsModalOpen(true)}
-                className="bg-sentinel text-white px-4 py-2 rounded-tech text-sm font-medium hover:bg-sentinel-hover transition-colors"
+                disabled={!setupStatus?.isConfigured}
+                className={`px-4 py-2 rounded-tech text-sm font-medium transition-colors ${
+                  setupStatus?.isConfigured
+                    ? 'bg-sentinel text-white hover:bg-sentinel-hover'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
+                title={!setupStatus?.isConfigured ? 'Complete setup first' : ''}
               >
                 New Subscription
               </button>
@@ -406,6 +412,11 @@ const Dashboard: React.FC = () => {
           setSelectedSubscription(null);
         }}
       />
+
+      {/* Setup Wizard Modal */}
+      {showSetupWizard && (
+        <SetupWizard onComplete={handleSetupComplete} />
+      )}
     </div>
   );
 };
