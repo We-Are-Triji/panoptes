@@ -3,7 +3,7 @@ import StatCard from './StatCard';
 import TimeRangeSelector from './TimeRangeSelector';
 import VolumeChart from './VolumeChart';
 import DistributionChart from './DistributionChart';
-import { useStatsData } from '../hooks/useStatsData';
+import { useStatsData, formatTimeRangeLabel, isCustomTimeRange } from '../hooks/useStatsData';
 import { WebhookSubscription } from '../types';
 
 interface StatsDashboardProps {
@@ -61,7 +61,7 @@ const StatsDashboard: React.FC<StatsDashboardProps> = ({ subscriptions }) => {
         <StatCard
           title="Total Webhooks"
           value={isLoading ? '—' : totalWebhooks.toLocaleString()}
-          subtitle={`in last ${timeRange === '24h' ? '24 hours' : timeRange === '7d' ? '7 days' : '30 days'}`}
+          subtitle={isCustomTimeRange(timeRange) ? formatTimeRangeLabel(timeRange) : `in last ${formatTimeRangeLabel(timeRange)}`}
           icon={
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
