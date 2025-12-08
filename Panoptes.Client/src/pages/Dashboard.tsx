@@ -2,13 +2,35 @@ import React, { useEffect, useState } from 'react';
 import { getSubscriptions, getLogs, createSubscription, triggerTestEvent, updateSubscription, deleteSubscription } from '../services/api';
 import { WebhookSubscription, DeliveryLog } from '../types';
 import StatCard from '../components/StatCard';
-import SubscriptionTable from '../components/SubscriptionTable';
+import { SubscriptionGrid } from '../components/SubscriptionGrid';
 import SubscriptionFilters from '../components/SubscriptionFilters';
 import LogViewer from '../components/LogViewer';
 import CreateSubscriptionModal from '../components/CreateSubscriptionModal';
 import EditSubscriptionModal from '../components/EditSubscriptionModal';
 import ConfirmationModal from '../components/ConfirmationModal';
+
+import StatsDashboard from '../components/StatsDashboard';
 import { useSubscriptionFilters } from '../hooks/useSubscriptionFilters';
+
+type DashboardView = 'overview' | 'analytics';
+
+import { SetupWizard } from '../components/SetupWizard';
+
+interface SystemInfo {
+  network: string;
+  grpcEndpoint: string;
+  hasApiKey: boolean;
+  availableNetworks: string[];
+  configuredVia: string;
+}
+
+interface SetupStatus {
+  isConfigured: boolean;
+  network?: string;
+  grpcEndpoint?: string;
+  lastUpdated?: string;
+}
+
 
 const Dashboard: React.FC = () => {
   const [subscriptions, setSubscriptions] = useState<WebhookSubscription[]>([]);
@@ -21,6 +43,13 @@ const Dashboard: React.FC = () => {
   const [selectedSubscription, setSelectedSubscription] = useState<WebhookSubscription | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoadingSubscriptions, setIsLoadingSubscriptions] = useState<boolean>(true);
+
+  const [activeView, setActiveView] = useState<DashboardView>('overview');
+
+  const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
+  const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
+  const [showSetupWizard, setShowSetupWizard] = useState(false);
+
 
   // Subscription filters
   const {
@@ -68,13 +97,47 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  const fetchSystemInfo = async () => {
+    try {
+      const response = await fetch('/health/system-info');
+      const data = await response.json();
+      setSystemInfo(data);
+    } catch (error) {
+      console.error("Error fetching system info:", error);
+    }
+  };
+
+  const fetchSetupStatus = async () => {
+    try {
+      const response = await fetch('/setup/status');
+      const data = await response.json();
+      setSetupStatus(data);
+      
+      // Show setup wizard if not configured
+      if (!data.isConfigured) {
+        setShowSetupWizard(true);
+      }
+    } catch (error) {
+      console.error("Error fetching setup status:", error);
+    }
+  };
+
+  const handleSetupComplete = () => {
+    setShowSetupWizard(false);
+    fetchSetupStatus();
+    fetchSystemInfo();
+    fetchSubscriptions();
+  };
+
   useEffect(() => {
+    fetchSetupStatus();
     fetchSubscriptions();
     fetchLogs();
+    fetchSystemInfo();
 
     // Refresh logs every 2 seconds for real-time feel
     const logInterval = setInterval(fetchLogs, 2000);
-    
+
     // Refresh subscriptions less frequently (e.g., every 10 seconds)
     const subInterval = setInterval(fetchSubscriptions, 10000);
 
@@ -169,11 +232,66 @@ const Dashboard: React.FC = () => {
       <nav className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
-            <div className="flex">
+            <div className="flex items-center gap-4">
               <div className="flex-shrink-0 flex items-center">
                 <h1 className="text-xl font-bold text-gray-900">Panoptes Mission Control</h1>
               </div>
+              {systemInfo && (
+                <div className="flex items-center gap-2">
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                    systemInfo.network === 'Mainnet' 
+                      ? 'bg-green-100 text-green-800' 
+                      : systemInfo.network === 'Preprod'
+                      ? 'bg-blue-100 text-blue-800'
+                      : 'bg-purple-100 text-purple-800'
+                  }`}>
+                    {systemInfo.network}
+                  </span>
+                  {!systemInfo.hasApiKey && (
+                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800">
+                      ⚠️ No API Key
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
+            <div className="flex items-center">
+              <a
+                href="/settings"
+                className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+              >
+                ⚙️ Settings
+              </a>
+            </div>
+          </div>
+          {/* Navigation Tabs */}
+          <div className="flex gap-1 -mb-px">
+            <button
+              onClick={() => setActiveView('overview')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeView === 'overview'
+                  ? 'border-sentinel text-sentinel'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <svg className="w-4 h-4 inline-block mr-2 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+              </svg>
+              Overview
+            </button>
+            <button
+              onClick={() => setActiveView('analytics')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeView === 'analytics'
+                  ? 'border-sentinel text-sentinel'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <svg className="w-4 h-4 inline-block mr-2 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              Analytics
+            </button>
           </div>
         </div>
       </nav>
@@ -209,7 +327,7 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
         )}
-        
+
         {/* Connection Status Banner */}
         {!isConnected && (
           <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-md p-4">
@@ -221,39 +339,75 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
         )}
-        
+
+
         {/* Stats */}
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-3 mb-8">
-          <StatCard 
-            title="Active Hooks" 
+          <StatCard
+            title="Active Hooks"
             value={subscriptions.filter(s => s.isActive).length}
             icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>}
           />
-          <StatCard 
-            title="Total Events" 
+          <StatCard
+            title="Total Events"
             value={totalLogs}
             icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>}
           />
-          <StatCard 
-            title="Success Rate" 
+          <StatCard
+            title="Success Rate"
             value={`${logs.length > 0 ? Math.round((logs.filter(l => l.responseStatusCode >= 200 && l.responseStatusCode < 300).length / logs.length) * 100) : 0}%`}
             icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
           />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        {/* Analytics View */}
+        {activeView === 'analytics' && (
+          <StatsDashboard subscriptions={subscriptions} />
+        )}
+
+
+        {/* Overview View */}
+        {activeView === 'overview' && (
+          <>
+            {/* Stats */}
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-3 mb-8">
+              <StatCard 
+                title="Active Hooks" 
+                value={subscriptions.filter(s => s.isActive).length}
+                icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>}
+              />
+              <StatCard 
+                title="Total Events" 
+                value={totalLogs}
+                icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>}
+              />
+              <StatCard 
+                title="Success Rate" 
+                value={`${logs.length > 0 ? Math.round((logs.filter(l => l.responseStatusCode >= 200 && l.responseStatusCode < 300).length / logs.length) * 100) : 0}%`}
+                icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column: Subscriptions (2/3 width) */}
           <div className="lg:col-span-2 space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-medium text-gray-900">Subscriptions</h2>
-              <button 
+              <button
                 onClick={() => setIsModalOpen(true)}
-                className="bg-sentinel text-white px-4 py-2 rounded-tech text-sm font-medium hover:bg-sentinel-hover transition-colors"
+                disabled={!setupStatus?.isConfigured}
+                className={`px-4 py-2 rounded-tech text-sm font-medium transition-colors ${
+                  setupStatus?.isConfigured
+                    ? 'bg-sentinel text-white hover:bg-sentinel-hover'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
+                title={!setupStatus?.isConfigured ? 'Complete setup first' : ''}
               >
                 New Subscription
               </button>
             </div>
-            
+
             {/* Filter Bar */}
             <SubscriptionFilters
               searchQuery={searchQuery}
@@ -268,7 +422,7 @@ const Dashboard: React.FC = () => {
               onSortChange={setSortBy}
               onClearFilters={clearFilters}
             />
-            
+
             {/* Results count */}
             {subscriptions.length > 0 && (
               <div className="text-sm text-gray-500">
@@ -276,14 +430,18 @@ const Dashboard: React.FC = () => {
                 {activeFilterCount > 0 && ' (filtered)'}
               </div>
             )}
-            
-            <SubscriptionTable 
+
+            <SubscriptionGrid
               subscriptions={filteredSubscriptions}
-              onTest={handleTest} 
-              onEdit={handleEdit}
-              onDelete={handleDeleteClick}
-              hasActiveFilters={activeFilterCount > 0}
-              isLoading={isLoadingSubscriptions && subscriptions.length === 0}
+              onTest={handleTest}
+              onEdit={(id) => {
+                const sub = subscriptions.find(s => s.id === id);
+                if (sub) handleEdit(sub);
+              }}
+              onDelete={(id) => {
+                const sub = subscriptions.find(s => s.id === id);
+                if (sub) handleDeleteClick(sub);
+              }}
             />
           </div>
 
@@ -303,7 +461,9 @@ const Dashboard: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
+            </div>
+          </>
+        )}
       </main>
 
       {/* Create Subscription Modal */}
@@ -338,6 +498,11 @@ const Dashboard: React.FC = () => {
           setSelectedSubscription(null);
         }}
       />
+
+      {/* Setup Wizard Modal */}
+      {showSetupWizard && (
+        <SetupWizard onComplete={handleSetupComplete} />
+      )}
     </div>
   );
 };
