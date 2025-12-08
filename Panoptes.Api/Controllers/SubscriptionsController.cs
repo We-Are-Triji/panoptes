@@ -420,8 +420,12 @@ namespace Panoptes.Api.Controllers
             return Ok(existingSub);
         }
 
-        [HttpPost("{id}/resume")]
-        public async Task<ActionResult<WebhookSubscription>> ResumeSubscription(Guid id)
+        /// <summary>
+        /// Reset a subscription's circuit breaker state. Use this when a subscription is disabled 
+        /// due to rate limiting or circuit breaker and you want to re-enable it.
+        /// </summary>
+        [HttpPost("{id}/reset")]
+        public async Task<ActionResult<WebhookSubscription>> ResetSubscription(Guid id)
         {
             var sub = await _dbContext.WebhookSubscriptions.FindAsync(id);
             if (sub == null)
@@ -429,13 +433,67 @@ namespace Panoptes.Api.Controllers
                 return NotFound($"Subscription with ID {id} not found.");
             }
 
-            // Reset circuit breaker and re-enable subscription
+            // Reset circuit breaker, rate limit, and re-enable subscription
             sub.IsActive = true;
             sub.IsCircuitBroken = false;
             sub.CircuitBrokenReason = null;
             sub.ConsecutiveFailures = 0;
             sub.FirstFailureInWindowAt = null;
             sub.LastFailureAt = null;
+            sub.IsRateLimited = false;
+
+            _logger.LogInformation("🔄 Subscription {Name} (ID: {Id}) reset - circuit breaker and rate limit cleared", sub.Name, sub.Id);
+
+            await _dbContext.SaveChangesAsync();
+
+            return Ok(sub);
+        }
+
+        /// <summary>
+        /// Toggle subscription active state - switches between active and paused.
+        /// When deactivating (pausing), events are still recorded but not dispatched.
+        /// When activating (resuming), pending events will be dispatched.
+        /// </summary>
+        [HttpPost("{id}/toggle")]
+        public async Task<ActionResult<WebhookSubscription>> ToggleSubscription(Guid id)
+        {
+            var sub = await _dbContext.WebhookSubscriptions.FindAsync(id);
+            if (sub == null)
+            {
+                return NotFound($"Subscription with ID {id} not found.");
+            }
+
+            // Toggle the active state
+            sub.IsActive = !sub.IsActive;
+            
+            if (sub.IsActive)
+            {
+                // Resuming - check for pending events
+                var pendingEventCount = await _dbContext.DeliveryLogs
+                    .CountAsync(l => l.SubscriptionId == id && l.Status == DeliveryStatus.Paused);
+                
+                // Mark all paused events as Retrying so they get picked up by the retry worker
+                if (pendingEventCount > 0)
+                {
+                    var pausedEvents = await _dbContext.DeliveryLogs
+                        .Where(l => l.SubscriptionId == id && l.Status == DeliveryStatus.Paused)
+                        .ToListAsync();
+                    
+                    foreach (var log in pausedEvents)
+                    {
+                        log.Status = DeliveryStatus.Retrying;
+                        log.NextRetryAt = DateTime.UtcNow;
+                        log.ResponseBody = "Subscription activated - queued for delivery";
+                    }
+                }
+                
+                _logger.LogInformation("▶️ Subscription {Name} (ID: {Id}) activated. {Count} pending events queued.", 
+                    sub.Name, sub.Id, pendingEventCount);
+            }
+            else
+            {
+                _logger.LogInformation("⏸️ Subscription {Name} (ID: {Id}) paused", sub.Name, sub.Id);
+            }
 
             await _dbContext.SaveChangesAsync();
 

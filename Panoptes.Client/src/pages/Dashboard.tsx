@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getSubscriptions, getLogs, createSubscription, triggerTestEvent, updateSubscription, deleteSubscription } from '../services/api';
+import { getSubscriptions, getLogs, createSubscription, triggerTestEvent, updateSubscription, deleteSubscription, toggleSubscriptionActive, resetSubscription } from '../services/api';
 import { WebhookSubscription, DeliveryLog } from '../types';
 import StatCard from '../components/StatCard';
 import { SubscriptionGrid } from '../components/SubscriptionGrid';
@@ -225,6 +225,30 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  const handleToggleActive = async (id: string) => {
+    try {
+      await toggleSubscriptionActive(id);
+      fetchSubscriptions();
+      setError(null);
+    } catch (error: any) {
+      console.error("Error toggling subscription:", error);
+      const errorMsg = error.response?.data || error.message || "Failed to toggle subscription.";
+      setError(`Toggle Failed: ${errorMsg}`);
+    }
+  };
+
+  const handleReset = async (id: string) => {
+    try {
+      await resetSubscription(id);
+      fetchSubscriptions();
+      setError(null);
+    } catch (error: any) {
+      console.error("Error resetting subscription:", error);
+      const errorMsg = error.response?.data || error.message || "Failed to reset subscription.";
+      setError(`Reset Failed: ${errorMsg}`);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-100">
       <nav className="bg-white shadow-sm">
@@ -440,6 +464,8 @@ const Dashboard: React.FC = () => {
                 const sub = subscriptions.find(s => s.id === id);
                 if (sub) handleDeleteClick(sub);
               }}
+              onToggleActive={handleToggleActive}
+              onReset={handleReset}
             />
           </div>
 
