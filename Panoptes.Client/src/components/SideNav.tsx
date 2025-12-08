@@ -1,13 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useContext } from 'react';
 import { ChevronLeft, ChevronRight, Menu, X } from 'lucide-react';
 import { PRIMARY_NAV_ITEMS, SECONDARY_NAV_ITEMS } from '../config/navigation';
 import { SideNavItem } from './SideNavItem';
 import { SideNavFooter } from './SideNavFooter';
+import { ThemeContext } from '../App';
+import ThemeToggle from '../ThemeToggle';
 import { cn } from '../lib/utils';
 
 const COLLAPSE_STORAGE_KEY = 'panoptes-sidenav-collapsed';
 
 export function SideNav() {
+  const { isDark, setIsDark } = useContext(ThemeContext);
   const [isCollapsed, setIsCollapsed] = useState(() => {
     const stored = localStorage.getItem(COLLAPSE_STORAGE_KEY);
     return stored ? JSON.parse(stored) : false;
@@ -91,6 +94,17 @@ export function SideNav() {
               onClick={closeMobile}
             />
           ))}
+          
+          {/* Theme Toggle */}
+          <div className={cn(
+            "flex items-center gap-3 px-3 py-2 rounded-tech transition-colors",
+            isCollapsed ? "justify-center" : ""
+          )}>
+            {!isCollapsed && (
+              <span className="text-sm font-mono text-muted-foreground">Theme</span>
+            )}
+            <ThemeToggle isDark={isDark} toggle={() => setIsDark(!isDark)} />
+          </div>
         </div>
       </div>
 
