@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { getSubscriptions, getLogs, createSubscription, triggerTestEvent, updateSubscription, deleteSubscription, toggleSubscriptionActive, resetSubscription } from '../services/api';
 import { WebhookSubscription, DeliveryLog } from '../types';
@@ -18,8 +19,6 @@ import { SetupWizard } from '../components/SetupWizard';
 // --- HOOKS ---
 import { useSubscriptionFilters } from '../hooks/useSubscriptionFilters';
 
-type DashboardView = 'overview' | 'analytics';
-
 interface SystemInfo {
   network: string;
   grpcEndpoint: string;
@@ -36,6 +35,9 @@ interface SetupStatus {
 }
 
 const Dashboard: React.FC = () => {
+  const location = useLocation();
+  const activeView = location.pathname === '/analytics' ? 'analytics' : 'overview';
+  
   // --- STATE ---
   const [subscriptions, setSubscriptions] = useState<WebhookSubscription[]>([]);
   const [logs, setLogs] = useState<DeliveryLog[]>([]);
@@ -53,7 +55,6 @@ const Dashboard: React.FC = () => {
   const [viewingSubscription, setViewingSubscription] = useState<WebhookSubscription | null>(null);
   
   const [error, setError] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState<DashboardView>('overview');
   
   // System Info
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
@@ -269,71 +270,31 @@ const Dashboard: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 transition-colors duration-200">
-      
-      {/* NAVBAR */}
-      <nav className="bg-white dark:bg-gray-800 shadow-sm transition-colors duration-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center gap-4">
-              <div className="flex-shrink-0 flex items-center">
-                <h1 className="text-xl font-bold text-gray-900 dark:text-white">Panoptes Mission Control</h1>
-              </div>
-              {systemInfo && (
-                <div className="flex items-center gap-2">
-                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                    systemInfo.network === 'Mainnet' 
-                      ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
-                      : systemInfo.network === 'Preprod'
-                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-                      : 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
-                  }`}>
-                    {systemInfo.network}
-                  </span>
-                  {!systemInfo.hasApiKey && (
-                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
-                      ⚠️ No API Key
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="flex items-center">
-              <a href="/settings" className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white px-3 py-2 rounded-md text-sm font-medium">
-                ⚙️ Settings
-              </a>
-            </div>
-          </div>
-          
-          {/* NAVIGATION TABS */}
-          <div className="flex gap-1 -mb-px">
-            <button
-              onClick={() => { setActiveView('overview'); setViewingSubscription(null); }}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeView === 'overview'
-                  ? 'border-sentinel text-sentinel'
-                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300'
-              }`}
-            >
-              Overview
-            </button>
-            <button
-              onClick={() => { setActiveView('analytics'); setViewingSubscription(null); }}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeView === 'analytics'
-                  ? 'border-sentinel text-sentinel'
-                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300'
-              }`}
-            >
-              Analytics
-            </button>
+    <div className="p-6 max-w-7xl mx-auto">
+      {/* Header with System Info */}
+      {systemInfo && (
+        <div className="mb-6 flex items-center gap-3">
+          <h1 className="text-2xl font-bold text-foreground">Panoptes Mission Control</h1>
+          <div className="flex items-center gap-2">
+            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+              systemInfo.network === 'Mainnet' 
+                ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
+                : systemInfo.network === 'Preprod'
+                ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                : 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
+            }`}>
+              {systemInfo.network}
+            </span>
+            {!systemInfo.hasApiKey && (
+              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+                ⚠️ No API Key
+              </span>
+            )}
           </div>
         </div>
-      </nav>
+      )}
 
-      {/* MAIN CONTENT */}
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        
+
         {/* Error Banner */}
         {error && (
           <div className="mb-6 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-md p-4">
@@ -349,7 +310,7 @@ const Dashboard: React.FC = () => {
           </div>
         )}
 
-        {/* 👇 FIX: Restored Icons to StatCards to fix missing prop errors */}
+        {/* Stats - Shown on both views */}
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-3 mb-8">
           <StatCard
             title="Active Hooks"
@@ -378,127 +339,159 @@ const Dashboard: React.FC = () => {
           <>
             {/* LOGIC SWITCH: Detail View vs List View */}
             {viewingSubscription ? (
-                // 1. DETAIL VIEW
-                <SubscriptionDetail 
-                    subscription={viewingSubscription} 
-                    onBack={() => setViewingSubscription(null)} 
-                />
+              // 1. DETAIL VIEW
+              <SubscriptionDetail 
+                subscription={viewingSubscription} 
+                onBack={() => setViewingSubscription(null)} 
+              />
             ) : (
-                // 2. LIST VIEW (Grid + Logs)
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    
-                    {/* Left Column: Subscriptions */}
-                    <div className="lg:col-span-2 space-y-6">
-                        <div className="flex justify-between items-center">
-                            <h2 className="text-lg font-medium text-gray-900 dark:text-white">Subscriptions</h2>
-                            <button
-                                onClick={() => setIsModalOpen(true)}
-                                disabled={!setupStatus?.isConfigured}
-                                className={`px-4 py-2 rounded-tech text-sm font-medium transition-colors ${
-                                    setupStatus?.isConfigured
-                                    ? 'bg-sentinel text-white hover:bg-sentinel-hover'
-                                    : 'bg-gray-300 text-gray-500 cursor-not-allowed dark:bg-gray-700 dark:text-gray-400'
-                                }`}
-                            >
-                                New Subscription
-                            </button>
-                        </div>
+// 2. LIST VIEW (Grid + Logs)
+<div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
-                        <SubscriptionFilters
-                            searchQuery={searchQuery}
-                            statusFilter={statusFilter}
-                            eventTypeFilter={eventTypeFilter}
-                            sortBy={sortBy}
-                            activeFilterCount={activeFilterCount}
-                            availableEventTypes={availableEventTypes}
-                            onSearchChange={setSearchQuery}
-                            onStatusChange={setStatusFilter}
-                            onEventTypeChange={setEventTypeFilter}
-                            onSortChange={setSortBy}
-                            onClearFilters={clearFilters}
-                        />
+  {/* Left Column: Subscriptions (2/3 width) */}
+  <div className="lg:col-span-2 space-y-6">
 
-                        {subscriptions.length > 0 && (
-                            <div className="text-sm text-gray-500 dark:text-gray-400">
-                                Showing {filteredSubscriptions.length} of {subscriptions.length} subscription{subscriptions.length !== 1 ? 's' : ''}
-                                {activeFilterCount > 0 && ' (filtered)'}
-                            </div>
-                        )}
+    {/* Header */}
+    <div className="flex justify-between items-center">
+      <h2 className="text-lg font-medium text-gray-900 dark:text-white">
+        Subscriptions
+      </h2>
 
-                        <SubscriptionGrid
-                            subscriptions={filteredSubscriptions} // Use filtered list
-                            loading={loading} // Pass loading state
-                            onSelectSubscription={setViewingSubscription} // <--- CONNECTED HERE
-                            onTest={handleTest}
-                            onEdit={(id) => {
-                                const sub = subscriptions.find(s => s.id === id);
-                                if (sub) handleEdit(sub);
-                            }}
-                            onDelete={(id) => {
-                                const sub = subscriptions.find(s => s.id === id);
-                                if (sub) handleDeleteClick(sub);
-                            }}
-                            onToggleActive={handleToggleActive}
-                            onReset={handleReset}
-                        />
-                    </div>
+      <button
+        onClick={() => setIsModalOpen(true)}
+        disabled={!setupStatus?.isConfigured}
+        className={`px-4 py-2 rounded-tech text-sm font-medium transition-colors ${
+          setupStatus?.isConfigured
+            ? 'bg-sentinel text-white hover:bg-sentinel-hover'
+            : 'bg-gray-300 text-gray-500 cursor-not-allowed dark:bg-gray-700 dark:text-gray-400'
+        }`}
+        title={!setupStatus?.isConfigured ? 'Complete setup first' : ''}
+      >
+        New Subscription
+      </button>
+    </div>
 
-                    {/* Right Column: Recent Logs */}
-                    <div className="lg:col-span-1">
-                        <div className="bg-white dark:bg-gray-800 shadow rounded-lg transition-colors duration-200">
-                            <div className="px-6 py-5 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-                                <h2 className="text-lg font-medium text-gray-900 dark:text-white">Recent Logs</h2>
-                                {totalLogs > 0 && (
-                                    <span className="text-xs text-gray-500 dark:text-gray-400">
-                                    Showing {Math.min(10, logs.length)} of {totalLogs}
-                                    </span>
-                                )}
-                            </div>
-                            <div className="px-6 py-5 max-h-[600px] overflow-y-auto">
-                                <LogViewer logs={logs || []} subscriptions={subscriptions || []} />
-                            </div>
-                        </div>
-                    </div>
+    {/* Filters */}
+    <SubscriptionFilters
+      searchQuery={searchQuery}
+      statusFilter={statusFilter}
+      eventTypeFilter={eventTypeFilter}
+      sortBy={sortBy}
+      activeFilterCount={activeFilterCount}
+      availableEventTypes={availableEventTypes}
+      onSearchChange={setSearchQuery}
+      onStatusChange={setStatusFilter}
+      onEventTypeChange={setEventTypeFilter}
+      onSortChange={setSortBy}
+      onClearFilters={clearFilters}
+    />
+
+    {/* Filter Counter */}
+    {subscriptions.length > 0 && (
+      <div className="text-sm text-gray-500 dark:text-gray-400">
+        Showing {filteredSubscriptions.length} of {subscriptions.length} subscription
+        {subscriptions.length !== 1 ? 's' : ''}
+        {activeFilterCount > 0 && ' (filtered)'}
+      </div>
+    )}
+
+    {/* Grid */}
+    <SubscriptionGrid
+      subscriptions={filteredSubscriptions}
+      loading={loading}
+      onSelectSubscription={setViewingSubscription}
+      onTest={handleTest}
+      onEdit={(id) => {
+        const sub = subscriptions.find(s => s.id === id);
+        if (sub) handleEdit(sub);
+      }}
+      onDelete={(id) => {
+        const sub = subscriptions.find(s => s.id === id);
+        if (sub) handleDeleteClick(sub);
+      }}
+      onToggleActive={handleToggleActive}
+      onReset={handleReset}
+    />
+
+  </div>
+</div>
+
+                  )}
+
+                  <SubscriptionGrid
+                    subscriptions={filteredSubscriptions}
+                    loading={loading}
+                    onSelectSubscription={setViewingSubscription}
+                    onTest={handleTest}
+                    onEdit={(id) => {
+                      const sub = subscriptions.find(s => s.id === id);
+                      if (sub) handleEdit(sub);
+                    }}
+                    onDelete={(id) => {
+                      const sub = subscriptions.find(s => s.id === id);
+                      if (sub) handleDeleteClick(sub);
+                    }}
+                  />
                 </div>
+
+                {/* Right Column: Recent Logs (1/3 width) */}
+                <div className="lg:col-span-1">
+                  <div className="bg-card shadow rounded-lg">
+                    <div className="px-6 py-5 border-b border-border flex justify-between items-center">
+                      <h2 className="text-lg font-medium text-foreground">Recent Logs</h2>
+                      {totalLogs > 0 && (
+                        <span className="text-xs text-muted-foreground">
+                          Showing {Math.min(10, logs.length)} of {totalLogs}
+                        </span>
+                      )}
+                    </div>
+                    <div className="px-6 py-5 max-h-[600px] overflow-y-auto">
+                      <LogViewer logs={logs || []} subscriptions={subscriptions || []} />
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
           </>
         )}
-      </main>
 
-      {/* MODALS */}
-      <CreateSubscriptionModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onCreate={handleCreate}
-      />
+        {/* Create Subscription Modal */}
+        <CreateSubscriptionModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          onCreate={handleCreate}
+        />
 
-      <EditSubscriptionModal
-        isOpen={isEditModalOpen}
-        subscription={selectedSubscription}
-        onClose={() => {
-          setIsEditModalOpen(false);
-          setSelectedSubscription(null);
-        }}
-        onSave={handleEditSave}
-      />
+        {/* Edit Subscription Modal */}
+        <EditSubscriptionModal
+          isOpen={isEditModalOpen}
+          subscription={selectedSubscription}
+          onClose={() => {
+            setIsEditModalOpen(false);
+            setSelectedSubscription(null);
+          }}
+          onSave={handleEditSave}
+        />
 
-      <ConfirmationModal
-        isOpen={isDeleteModalOpen}
-        title="Delete Subscription"
-        message={`Are you sure you want to delete "${selectedSubscription?.name}"?`}
-        confirmLabel="Delete"
-        cancelLabel="Cancel"
-        confirmVariant="danger"
-        onConfirm={handleDeleteConfirm}
-        onCancel={() => {
-          setIsDeleteModalOpen(false);
-          setSelectedSubscription(null);
-        }}
-      />
+        {/* Delete Confirmation Modal */}
+        <ConfirmationModal
+          isOpen={isDeleteModalOpen}
+          title="Delete Subscription"
+          message={`Are you sure you want to delete "${selectedSubscription?.name}"? This action cannot be undone and all associated logs will be orphaned.`}
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          confirmVariant="danger"
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => {
+            setIsDeleteModalOpen(false);
+            setSelectedSubscription(null);
+          }}
+        />
 
-      {showSetupWizard && (
-        <SetupWizard onComplete={handleSetupComplete} />
-      )}
+        {/* Setup Wizard Modal */}
+        {showSetupWizard && (
+          <SetupWizard onComplete={handleSetupComplete} />
+        )}
     </div>
   );
 };

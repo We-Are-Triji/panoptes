@@ -1,36 +1,15 @@
-import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
-import React, { createContext, useEffect, useState } from 'react';
-import { Toaster } from 'react-hot-toast'; // 1. Import Toaster
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { createContext, useEffect, useState } from 'react';
+import { Toaster } from 'react-hot-toast';
 import Dashboard from './pages/Dashboard';
 import SubscriptionDetail from './pages/SubscriptionDetail';
 import Settings from './pages/Settings';
-import ThemeToggle from './ThemeToggle';
+import { DashboardLayout } from './layouts/DashboardLayout';
 
 export const ThemeContext = createContext<{
   isDark: boolean;
   setIsDark: (v: boolean) => void;
 }>({ isDark: false, setIsDark: () => {} });
-
-function RoutesWithToggle() {
-  const location = useLocation();
-  const { isDark, setIsDark } = React.useContext(ThemeContext);
-
-  return (
-    <>
-      {/* Conditionally render the toggle on the dashboard upper-right */}
-      {location.pathname === '/' && (
-        <div className="fixed top-4 right-4 z-50">
-          <ThemeToggle isDark={isDark} toggle={() => setIsDark(!isDark)} />
-        </div>
-      )}
-      <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/subscriptions/:id" element={<SubscriptionDetail />} />
-        <Route path="/settings" element={<Settings />} />
-      </Routes>
-    </>
-  );
-}
 
 function App() {
   const [isDark, setIsDark] = useState<boolean>(() => {
@@ -53,16 +32,13 @@ function App() {
 
   return (
     <ThemeContext.Provider value={{ isDark, setIsDark }}>
-      {/* 2. Configure Toaster with your Design Requirements */}
       <Toaster
         position="top-right"
         toastOptions={{
-          // Default style for all toasts (Dark Grey background for better contrast)
           style: {
             background: '#333',
             color: '#fff',
           },
-          // Success: Green (#10b981), 4s duration
           success: {
             duration: 4000,
             style: {
@@ -74,7 +50,6 @@ function App() {
               secondary: '#10b981',
             },
           },
-          // Error: Red (#ef4444), 5s duration
           error: {
             duration: 5000,
             style: {
@@ -90,7 +65,14 @@ function App() {
       />
       
       <Router>
-        <RoutesWithToggle />
+        <Routes>
+          <Route element={<DashboardLayout />}>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/analytics" element={<Dashboard />} />
+            <Route path="/subscriptions/:id" element={<SubscriptionDetail />} />
+            <Route path="/settings" element={<Settings />} />
+          </Route>
+        </Routes>
       </Router>
     </ThemeContext.Provider>
   );
