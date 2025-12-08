@@ -295,8 +295,56 @@ const SubscriptionDetail: React.FC = () => {
           </div>
         </div>
 
+        {/* Circuit Breaker Banner */}
+        {subscription.isCircuitBroken && (
+          <div className="mb-6 bg-orange-50 border border-orange-300 rounded-md p-4">
+            <div className="flex items-start justify-between">
+              <div className="flex items-start">
+                <svg className="h-6 w-6 text-orange-500 mr-3 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                <div className="flex-1">
+                  <span className="text-sm font-semibold text-orange-900">⚡ Circuit Breaker Triggered - Subscription Disabled</span>
+                  <p className="text-sm text-orange-800 mt-2">
+                    {subscription.circuitBrokenReason || "Your webhook endpoint has failed too many times and has been automatically disabled to prevent further issues."}
+                  </p>
+                  <p className="text-xs text-orange-700 mt-2">
+                    <strong>Consecutive failures:</strong> {subscription.consecutiveFailures || 0}
+                    {subscription.lastFailureAt && (
+                      <> • <strong>Last failure:</strong> {new Date(subscription.lastFailureAt).toLocaleString()}</>
+                    )}
+                  </p>
+                  <div className="mt-3 text-xs text-orange-700">
+                    <strong>What to do:</strong>
+                    <ul className="list-disc list-inside mt-1 space-y-1">
+                      <li>Check your webhook endpoint is running and accessible</li>
+                      <li>Verify your server can handle the request volume</li>
+                      <li>Check for rate limiting on your endpoint</li>
+                      <li>Once fixed, click "Resume Subscription" below to re-enable</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={async () => {
+                  try {
+                    await fetch(`http://localhost:5186/subscriptions/${id}/resume`, { method: 'POST' });
+                    await fetchSubscription();
+                    setError(null);
+                  } catch (err: any) {
+                    setError(`Failed to resume: ${err.message}`);
+                  }
+                }}
+                className="ml-4 px-4 py-2 bg-orange-600 text-white text-sm font-medium rounded-md hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 whitespace-nowrap"
+              >
+                Resume Subscription
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Sync Status Banner */}
-        {subscription.isSyncing && (
+        {subscription.isSyncing && !subscription.isCircuitBroken && (
           <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-md p-4">
             <div className="flex items-center">
               <svg className="animate-spin h-5 w-5 text-yellow-400 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

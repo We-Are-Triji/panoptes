@@ -18,6 +18,11 @@ export interface WebhookSubscription {
     isRateLimited?: boolean;
     isSyncing?: boolean;
     walletAddresses?: string[] | null;
+    consecutiveFailures?: number;
+    lastFailureAt?: string | null;
+    firstFailureInWindowAt?: string | null;
+    isCircuitBroken?: boolean;
+    circuitBrokenReason?: string | null;
 }
 
 export interface DeliveryLog {

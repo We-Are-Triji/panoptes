@@ -45,12 +45,17 @@ const SubscriptionTable: React.FC<SubscriptionTableProps> = ({ subscriptions, on
                                         }`}>
                                             {sub.isActive ? 'Active' : 'Inactive'}
                                         </span>
-                                        {sub.isSyncing && (
+                                        {sub.isCircuitBroken && (
+                                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-orange-100 text-orange-800" title={sub.circuitBrokenReason || "Circuit breaker triggered"}>
+                                                ⚡ Circuit Broken
+                                            </span>
+                                        )}
+                                        {sub.isSyncing && !sub.isCircuitBroken && (
                                             <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800 animate-pulse" title="Syncing with blockchain">
                                                 🔄 Syncing
                                             </span>
                                         )}
-                                        {sub.isRateLimited && (
+                                        {sub.isRateLimited && !sub.isCircuitBroken && (
                                             <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800" title="Rate limit exceeded">
                                                 🚫 Limited
                                             </span>

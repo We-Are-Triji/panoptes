@@ -31,6 +31,13 @@ namespace Panoptes.Core.Entities
         
         // Sync Status (not persisted, calculated at runtime)
         public bool IsSyncing { get; set; } = false;
+        
+        // Circuit Breaker (persisted)
+        public int ConsecutiveFailures { get; set; } = 0;
+        public DateTime? LastFailureAt { get; set; }
+        public DateTime? FirstFailureInWindowAt { get; set; }
+        public bool IsCircuitBroken { get; set; } = false;
+        public string? CircuitBrokenReason { get; set; }
 
         public bool Matches(string? address, string? policyId)
         {

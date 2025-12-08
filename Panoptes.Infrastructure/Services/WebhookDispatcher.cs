@@ -3,6 +3,7 @@ using Panoptes.Core.Entities;
 using Panoptes.Core.Interfaces;
 using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
@@ -53,6 +54,33 @@ namespace Panoptes.Infrastructure.Services
                 
                 // Read response body (truncate if necessary in a real app, but keeping it simple here)
                 log.ResponseBody = await response.Content.ReadAsStringAsync();
+                
+                // Handle 429 Rate Limit with Retry-After header
+                if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                {
+                    log.IsRateLimitRetry = true;
+                    
+                    // Check for Retry-After header (can be in seconds or HTTP-date format)
+                    if (response.Headers.TryGetValues("Retry-After", out var retryAfterValues))
+                    {
+                        var retryAfterValue = retryAfterValues.FirstOrDefault();
+                        
+                        // Try to parse as seconds (most common)
+                        if (int.TryParse(retryAfterValue, out var retryAfterSeconds))
+                        {
+                            log.RetryAfterSeconds = retryAfterSeconds;
+                        }
+                        // Try to parse as HTTP-date format
+                        else if (DateTime.TryParse(retryAfterValue, out var retryAfterDate))
+                        {
+                            var secondsUntil = (int)(retryAfterDate - DateTime.UtcNow).TotalSeconds;
+                            log.RetryAfterSeconds = Math.Max(secondsUntil, 1); // At least 1 second
+                        }
+                    }
+                    
+                    // If no Retry-After header, use conservative default
+                    log.RetryAfterSeconds ??= 60; // Default to 60 seconds
+                }
             }
             catch (Exception ex)
             {

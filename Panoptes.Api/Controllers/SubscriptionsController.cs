@@ -417,6 +417,28 @@ namespace Panoptes.Api.Controllers
             return Ok(existingSub);
         }
 
+        [HttpPost("{id}/resume")]
+        public async Task<ActionResult<WebhookSubscription>> ResumeSubscription(Guid id)
+        {
+            var sub = await _dbContext.WebhookSubscriptions.FindAsync(id);
+            if (sub == null)
+            {
+                return NotFound($"Subscription with ID {id} not found.");
+            }
+
+            // Reset circuit breaker and re-enable subscription
+            sub.IsActive = true;
+            sub.IsCircuitBroken = false;
+            sub.CircuitBrokenReason = null;
+            sub.ConsecutiveFailures = 0;
+            sub.FirstFailureInWindowAt = null;
+            sub.LastFailureAt = null;
+
+            await _dbContext.SaveChangesAsync();
+
+            return Ok(sub);
+        }
+
         [HttpDelete("{id}")]
         public async Task<ActionResult> DeleteSubscription(Guid id)
         {

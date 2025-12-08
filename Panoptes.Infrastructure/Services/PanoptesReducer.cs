@@ -369,12 +369,46 @@ namespace Panoptes.Infrastructure.Services
                 if (log.IsSuccess)
                 {
                     log.Status = DeliveryStatus.Success;
+                    
+                    // Reset circuit breaker on success
+                    sub.ConsecutiveFailures = 0;
+                    sub.FirstFailureInWindowAt = null;
+                    sub.LastFailureAt = null;
+                }
+                else if (log.IsRateLimited)
+                {
+                    // Schedule retry with Retry-After header or exponential backoff
+                    log.Status = DeliveryStatus.Retrying;
+                    
+                    if (log.RetryAfterSeconds.HasValue)
+                    {
+                        log.NextRetryAt = DateTime.UtcNow.AddSeconds(log.RetryAfterSeconds.Value);
+                        _logger?.LogWarning("Rate limited (429) for {Name}, retrying in {Seconds}s based on Retry-After header", 
+                            sub.Name, log.RetryAfterSeconds.Value);
+                    }
+                    else
+                    {
+                        log.NextRetryAt = DateTime.UtcNow.AddSeconds(30); // First retry: 30 seconds
+                        _logger?.LogWarning("Rate limited (429) for {Name}, retrying in 30s (default)", sub.Name);
+                    }
                 }
                 else
                 {
-                    // Schedule for retry with exponential backoff
+                    // Other failures: schedule for retry with exponential backoff
                     log.Status = DeliveryStatus.Retrying;
                     log.NextRetryAt = DateTime.UtcNow.AddSeconds(30); // First retry in 30 seconds
+                    
+                    // Track failure for circuit breaker
+                    sub.ConsecutiveFailures++;
+                    sub.LastFailureAt = DateTime.UtcNow;
+                    
+                    if (sub.FirstFailureInWindowAt == null)
+                    {
+                        sub.FirstFailureInWindowAt = DateTime.UtcNow;
+                    }
+                    
+                    _logger?.LogWarning("Webhook failed (status {Status}) for {Name}, consecutive failures: {Count}", 
+                        log.ResponseStatusCode, sub.Name, sub.ConsecutiveFailures);
                 }
                 
                 _dbContext.DeliveryLogs.Add(log);

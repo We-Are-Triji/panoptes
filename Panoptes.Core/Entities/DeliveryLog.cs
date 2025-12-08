@@ -15,8 +15,10 @@ namespace Panoptes.Core.Entities
         // Retry mechanism fields
         public int RetryCount { get; set; } = 0;
         public int MaxRetries { get; set; } = 3;
-        public DateTime? NextRetryAt { get; set; }
+        public DateTime? NextRetryAt { get; set; };
         public DeliveryStatus Status { get; set; } = DeliveryStatus.Pending;
+        public int? RetryAfterSeconds { get; set; } // From Retry-After header
+        public bool IsRateLimitRetry { get; set; } = false; // True if retry is due to 429
         
         // Navigation property for cascade delete
         public WebhookSubscription? Subscription { get; set; }

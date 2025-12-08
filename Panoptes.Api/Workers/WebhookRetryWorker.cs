@@ -99,22 +99,62 @@ namespace Panoptes.Api.Workers
                     {
                         log.Status = DeliveryStatus.Success;
                         log.NextRetryAt = null;
+                        
+                        // Reset circuit breaker on success
+                        log.Subscription.ConsecutiveFailures = 0;
+                        log.Subscription.FirstFailureInWindowAt = null;
+                        log.Subscription.LastFailureAt = null;
+                        
                         _logger.LogInformation("Webhook retry succeeded for log {LogId}", log.Id);
                     }
                     else if (log.RetryCount >= log.MaxRetries)
                     {
                         log.Status = DeliveryStatus.Failed;
                         log.NextRetryAt = null;
+                        
+                        // Track failure for circuit breaker
+                        await TrackFailure(log.Subscription, result.ResponseStatusCode, dbContext);
+                        
                         _logger.LogWarning("Webhook retry exhausted for log {LogId} after {RetryCount} attempts", 
                             log.Id, log.RetryCount);
                     }
                     else
                     {
-                        // Schedule next retry with exponential backoff
-                        var backoffSeconds = Math.Pow(2, log.RetryCount) * 30; // 30s, 60s, 120s, etc.
+                        // Calculate backoff based on response type
+                        int backoffSeconds;
+                        
+                        if (result.IsRateLimited)
+                        {
+                            // Use Retry-After header if available, otherwise exponential backoff
+                            if (result.RetryAfterSeconds.HasValue)
+                            {
+                                backoffSeconds = result.RetryAfterSeconds.Value;
+                                _logger.LogInformation("Using Retry-After header: {Seconds}s for log {LogId}", 
+                                    backoffSeconds, log.Id);
+                            }
+                            else
+                            {
+                                // Exponential backoff for 429: 30s, 2min, 10min, 1hr
+                                backoffSeconds = log.RetryCount switch
+                                {
+                                    0 => 30,        // First retry: 30 seconds
+                                    1 => 120,       // Second retry: 2 minutes
+                                    2 => 600,       // Third retry: 10 minutes
+                                    _ => 3600       // Fourth+ retry: 1 hour
+                                };
+                            }
+                            
+                            log.IsRateLimitRetry = true;
+                        }
+                        else
+                        {
+                            // Standard exponential backoff for other errors: 30s, 60s, 120s
+                            backoffSeconds = (int)(Math.Pow(2, log.RetryCount) * 30);
+                        }
+                        
                         log.NextRetryAt = DateTime.UtcNow.AddSeconds(backoffSeconds);
-                        _logger.LogInformation("Webhook retry {RetryCount} failed for log {LogId}, next retry at {NextRetry}", 
-                            log.RetryCount, log.Id, log.NextRetryAt);
+                        _logger.LogInformation("Webhook retry {RetryCount} failed (status {Status}) for log {LogId}, next retry in {Seconds}s at {NextRetry}", 
+                            log.RetryCount, result.ResponseStatusCode, log.Id, backoffSeconds, log.NextRetryAt);
                     }
                 }
                 catch (Exception ex)
@@ -138,6 +178,52 @@ namespace Panoptes.Api.Workers
             }
 
             await dbContext.SaveChangesAsync(stoppingToken);
+        }
+
+        /// <summary>
+        /// Track consecutive failures and implement circuit breaker logic
+        /// </summary>
+        private async Task TrackFailure(WebhookSubscription subscription, int statusCode, IAppDbContext dbContext)
+        {
+            subscription.ConsecutiveFailures++;
+            subscription.LastFailureAt = DateTime.UtcNow;
+            
+            // Start tracking failure window on first failure
+            if (subscription.FirstFailureInWindowAt == null)
+            {
+                subscription.FirstFailureInWindowAt = DateTime.UtcNow;
+            }
+
+            // Circuit Breaker Rule 1: 10 consecutive failures
+            if (subscription.ConsecutiveFailures >= 10)
+            {
+                subscription.IsActive = false;
+                subscription.IsCircuitBroken = true;
+                subscription.CircuitBrokenReason = $"Circuit breaker triggered: 10 consecutive failures (last status: {statusCode})";
+                
+                _logger.LogWarning(
+                    "⚠️ CIRCUIT BREAKER: Subscription {SubId} ({Name}) auto-disabled after {Failures} consecutive failures",
+                    subscription.Id, subscription.Name, subscription.ConsecutiveFailures);
+                
+                return;
+            }
+
+            // Circuit Breaker Rule 2: Failures for 24 hours straight
+            if (subscription.FirstFailureInWindowAt.HasValue)
+            {
+                var failureDuration = DateTime.UtcNow - subscription.FirstFailureInWindowAt.Value;
+                
+                if (failureDuration.TotalHours >= 24)
+                {
+                    subscription.IsActive = false;
+                    subscription.IsCircuitBroken = true;
+                    subscription.CircuitBrokenReason = $"Circuit breaker triggered: Continuous failures for 24+ hours ({subscription.ConsecutiveFailures} failures)";
+                    
+                    _logger.LogWarning(
+                        "⚠️ CIRCUIT BREAKER: Subscription {SubId} ({Name}) auto-disabled after {Hours:F1} hours of failures",
+                        subscription.Id, subscription.Name, failureDuration.TotalHours);
+                }
+            }
         }
     }
 }
