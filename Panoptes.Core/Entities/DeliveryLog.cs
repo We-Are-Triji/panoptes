@@ -21,8 +21,11 @@ namespace Panoptes.Core.Entities
         // Navigation property for cascade delete
         public WebhookSubscription? Subscription { get; set; }
         
+        // 429 (rate limit) should not count as failure - it's retriable
         public bool IsSuccess => ResponseStatusCode >= 200 && ResponseStatusCode < 300;
-        public bool CanRetry => !IsSuccess && RetryCount < MaxRetries && Status != DeliveryStatus.Success;
+        public bool IsRateLimited => ResponseStatusCode == 429;
+        public bool IsFailure => !IsSuccess && !IsRateLimited && ResponseStatusCode != 0;
+        public bool CanRetry => (!IsSuccess || IsRateLimited) && RetryCount < MaxRetries && Status != DeliveryStatus.Success;
     }
     
     public enum DeliveryStatus

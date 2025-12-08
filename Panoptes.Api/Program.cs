@@ -30,7 +30,7 @@ builder.Services.AddScoped<IAppDbContext>(provider => provider.GetRequiredServic
 // Register Services
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<IWebhookDispatcher, WebhookDispatcher>();
-builder.Services.AddScoped<PanoptesReducer>();
+builder.Services.AddSingleton<PanoptesReducer>(); // Singleton to share state across requests
 
 // Register Workers
 builder.Services.AddHostedService<ArgusWorker>();

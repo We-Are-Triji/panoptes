@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Panoptes.Core.Entities;
 using Panoptes.Core.Interfaces;
 using Panoptes.Api.DTOs;
+using Panoptes.Infrastructure.Services;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
@@ -15,11 +16,13 @@ namespace Panoptes.Api.Controllers
     {
         private readonly IAppDbContext _dbContext;
         private readonly IWebhookDispatcher _dispatcher;
+        private readonly PanoptesReducer _reducer;
 
-        public SubscriptionsController(IAppDbContext dbContext, IWebhookDispatcher dispatcher)
+        public SubscriptionsController(IAppDbContext dbContext, IWebhookDispatcher dispatcher, PanoptesReducer reducer)
         {
             _dbContext = dbContext;
             _dispatcher = dispatcher;
+            _reducer = reducer;
         }
 
         /// <summary>
@@ -44,6 +47,57 @@ namespace Panoptes.Api.Controllers
                 return address.Length >= 56 && address.Length <= 120;
             
             return false;
+        }
+
+        [HttpPost("validate-url")]
+        public async Task<ActionResult<object>> ValidateWebhookUrl([FromBody] string url)
+        {
+            if (string.IsNullOrWhiteSpace(url) ||
+                !Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+                (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            {
+                return BadRequest(new { Valid = false, Message = "Invalid URL format. Must be HTTP or HTTPS." });
+            }
+
+            try
+            {
+                using var client = new HttpClient();
+                client.Timeout = TimeSpan.FromSeconds(5);
+                
+                var testPayload = new { Event = "validation", Message = "Panoptes webhook URL validation test" };
+                var content = new StringContent(
+                    System.Text.Json.JsonSerializer.Serialize(testPayload), 
+                    System.Text.Encoding.UTF8, 
+                    "application/json");
+                
+                var response = await client.PostAsync(url, content);
+                
+                return Ok(new 
+                { 
+                    Valid = true, 
+                    StatusCode = (int)response.StatusCode,
+                    Message = response.IsSuccessStatusCode 
+                        ? "Webhook URL is reachable and accepting requests" 
+                        : $"Webhook URL responded with status {response.StatusCode}",
+                    Latency = 0 // Could track this with Stopwatch if needed
+                });
+            }
+            catch (HttpRequestException ex)
+            {
+                return Ok(new 
+                { 
+                    Valid = false, 
+                    Message = $"Failed to reach webhook URL: {ex.Message}" 
+                });
+            }
+            catch (TaskCanceledException)
+            {
+                return Ok(new 
+                { 
+                    Valid = false, 
+                    Message = "Request timed out after 5 seconds. URL may be unreachable." 
+                });
+            }
         }
 
         [HttpPost]
@@ -122,6 +176,7 @@ namespace Panoptes.Api.Controllers
                     .ToDictionaryAsync(x => x.SubscriptionId);
                 
                 // Apply stats to subscriptions
+                var isCatchingUp = _reducer.IsCatchingUp;
                 foreach (var sub in subscriptions)
                 {
                     if (rateLimitStats.TryGetValue(sub.Id, out var stats))
@@ -140,6 +195,9 @@ namespace Panoptes.Api.Controllers
                         sub.LastWebhookAt = null;
                         sub.IsRateLimited = false;
                     }
+                    
+                    // Mark as syncing if in catch-up mode and no webhooks sent yet
+                    sub.IsSyncing = isCatchingUp && sub.LastWebhookAt == null;
                 }
                 
                 return subscriptions;
@@ -253,6 +311,9 @@ namespace Panoptes.Api.Controllers
                     subscription.LastWebhookAt = null;
                     subscription.IsRateLimited = false;
                 }
+                
+                // Mark as syncing if in catch-up mode and no webhooks sent yet
+                subscription.IsSyncing = _reducer.IsCatchingUp && subscription.LastWebhookAt == null;
 
                 return Ok(subscription);
             }

@@ -122,8 +122,11 @@ const SubscriptionDetail: React.FC = () => {
 
   const calculateSuccessRate = () => {
     if (!logs || logs.length === 0) return 0;
-    const successCount = logs.filter(l => l.responseStatusCode >= 200 && l.responseStatusCode < 300).length;
-    return Math.round((successCount / logs.length) * 100);
+    // Exclude 429 (rate limit) from both success and failure counts - they're retriable
+    const relevantLogs = logs.filter(l => l.responseStatusCode !== 429);
+    if (relevantLogs.length === 0) return 0;
+    const successCount = relevantLogs.filter(l => l.responseStatusCode >= 200 && l.responseStatusCode < 300).length;
+    return Math.round((successCount / relevantLogs.length) * 100);
   };
 
   const calculateAvgLatency = () => {
@@ -291,6 +294,24 @@ const SubscriptionDetail: React.FC = () => {
             </dl>
           </div>
         </div>
+
+        {/* Sync Status Banner */}
+        {subscription.isSyncing && (
+          <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-md p-4">
+            <div className="flex items-center">
+              <svg className="animate-spin h-5 w-5 text-yellow-400 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <div>
+                <span className="text-sm font-medium text-yellow-800">Syncing with Blockchain</span>
+                <p className="text-xs text-yellow-700 mt-1">
+                  This subscription is still catching up to the latest block. Webhooks will start arriving once sync is complete. This usually takes a few seconds after creating a new subscription.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Rate Limit Warning Banner */}
         {subscription.isRateLimited && (

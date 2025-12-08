@@ -26,8 +26,11 @@ namespace Panoptes.Core.Entities
         // Rate Limit Status (not persisted, calculated at runtime)
         public int WebhooksInLastMinute { get; set; } = 0;
         public int WebhooksInLastHour { get; set; } = 0;
-        public DateTime? LastWebhookAt { get; set; }
+        public DateTime? LastWebhookAt { get; set; };
         public bool IsRateLimited { get; set; } = false;
+        
+        // Sync Status (not persisted, calculated at runtime)
+        public bool IsSyncing { get; set; } = false;
 
         public bool Matches(string? address, string? policyId)
         {

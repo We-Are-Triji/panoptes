@@ -16,6 +16,7 @@ export interface WebhookSubscription {
     webhooksInLastHour?: number;
     lastWebhookAt?: string | null;
     isRateLimited?: boolean;
+    isSyncing?: boolean;
     walletAddresses?: string[] | null;
 }
 

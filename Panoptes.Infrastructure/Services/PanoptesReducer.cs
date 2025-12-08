@@ -35,6 +35,9 @@ namespace Panoptes.Infrastructure.Services
         private bool _isCatchingUp = false;
         private int _consecutiveFastBlocks = 0;
         
+        // Expose catch-up state for API consumption
+        public bool IsCatchingUp => _isCatchingUp;
+        
         // Webhook batching: subscriptionId -> list of pending webhooks
         private readonly Dictionary<Guid, List<object>> _pendingWebhooks = new();
         private DateTime _lastBatchFlushAt = DateTime.UtcNow;
@@ -711,7 +714,8 @@ namespace Panoptes.Infrastructure.Services
                 var amount = output.Amount();
                 
                 // DIAGNOSTIC: Log the raw amount type for debugging
-                _logger?.LogDebug($"Output amount type: {amount?.GetType().Name ?? "null"}");
+                var amountTypeName = amount?.GetType().FullName ?? "null";
+                _logger?.LogDebug($"Output amount type: {amountTypeName}");
                 
                 // Get lovelace amount - handle multiple possible types
                 if (amount is LovelaceWithMultiAsset lovelaceWithMultiAsset)
@@ -763,39 +767,63 @@ namespace Panoptes.Infrastructure.Services
                 else if (amount != null)
                 {
                     // Handle other amount types (e.g., plain Lovelace, Coin, etc.)
-                    _logger?.LogWarning($"Unknown amount type: {amount.GetType().FullName} at address {addressHex}");
+                    var amountType = amount.GetType();
+                    _logger?.LogWarning($"Unknown amount type: {amountType.FullName} at address {addressHex}");
                     _logger?.LogWarning($"  Attempting alternate parsing methods...");
                     
-                    // Try to extract lovelace using reflection as fallback
-                    var amountType = amount.GetType();
-                    
-                    // Check for Coin property/method
-                    var coinProperty = amountType.GetProperty("Coin");
-                    if (coinProperty != null)
+                    // Strategy 1: Check if it's a plain ulong/uint64
+                    if (amount is ulong ulongAmount)
                     {
-                        var coinValue = coinProperty.GetValue(amount);
-                        if (coinValue is ulong coinLovelace)
-                        {
-                            lovelace = coinLovelace;
-                            _logger?.LogWarning($"  Extracted {lovelace} lovelace from Coin property");
-                            totalOutputLovelace += lovelace;
-                        }
+                        lovelace = ulongAmount;
+                        _logger?.LogWarning($"  ✅ Amount is plain ulong: {lovelace} lovelace");
+                        totalOutputLovelace += lovelace;
                     }
-                    
-                    // Try to convert to ulong if possible
-                    if (lovelace == 0)
+                    // Strategy 2: Check for Coin property/method (older Chrysalis versions)
+                    else
                     {
-                        try
+                        var coinProperty = amountType.GetProperty("Coin");
+                        if (coinProperty != null)
                         {
-                            // Try direct conversion
-                            var convertedValue = Convert.ToUInt64(amount);
-                            lovelace = convertedValue;
-                            _logger?.LogWarning($"  Converted amount to ulong: {lovelace} lovelace");
-                            totalOutputLovelace += lovelace;
+                            var coinValue = coinProperty.GetValue(amount);
+                            if (coinValue is ulong coinLovelace)
+                            {
+                                lovelace = coinLovelace;
+                                _logger?.LogWarning($"  ✅ Extracted {lovelace} lovelace from Coin property");
+                                totalOutputLovelace += lovelace;
+                            }
                         }
-                        catch (Exception ex)
+                        
+                        // Strategy 3: Try to convert to ulong if possible
+                        if (lovelace == 0)
                         {
-                            _logger?.LogWarning($"  Failed to convert amount to ulong: {ex.Message}");
+                            try
+                            {
+                                // Try direct conversion
+                                var convertedValue = Convert.ToUInt64(amount);
+                                lovelace = convertedValue;
+                                _logger?.LogWarning($"  ✅ Converted amount to ulong: {lovelace} lovelace");
+                                totalOutputLovelace += lovelace;
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger?.LogWarning($"  ❌ Failed to convert amount to ulong: {ex.Message}");
+                                
+                                // Strategy 4: Use reflection to inspect all properties
+                                var properties = amountType.GetProperties();
+                                _logger?.LogWarning($"  Available properties on {amountType.Name}:");
+                                foreach (var prop in properties)
+                                {
+                                    try
+                                    {
+                                        var propValue = prop.GetValue(amount);
+                                        _logger?.LogWarning($"    - {prop.Name}: {propValue} (Type: {prop.PropertyType.Name})");
+                                    }
+                                    catch
+                                    {
+                                        _logger?.LogWarning($"    - {prop.Name}: <unable to read>");
+                                    }
+                                }
+                            }
                         }
                     }
                 }
