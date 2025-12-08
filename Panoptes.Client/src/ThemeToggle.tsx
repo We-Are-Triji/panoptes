@@ -48,23 +48,26 @@ export default function ThemeToggle({ isDark: isDarkProp, toggle }: Props): JSX.
     }
   };
   
-   // Try to render into the navbar before the settings link if present
-   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
- 
-   useEffect(() => {
-     const settingsLink = document.querySelector('a[href="/settings"]');
-     if (settingsLink && settingsLink.parentElement) {
-       const container = document.createElement('div');
-       container.className = 'mr-2 flex items-center';
-       settingsLink.parentElement.insertBefore(container, settingsLink);
-       setPortalTarget(container);
- 
-       return () => {
-         try { container.remove(); } catch (e) {}
-       };
-     }
-     return;
-   }, []);
+  // Only use portal when NOT controlled (i.e., when used standalone)
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
+  const usePortal = !isControlled;
+
+  useEffect(() => {
+    if (!usePortal) return;
+    
+    const settingsLink = document.querySelector('a[href="/settings"]');
+    if (settingsLink && settingsLink.parentElement) {
+      const container = document.createElement('div');
+      container.className = 'mr-2 flex items-center';
+      settingsLink.parentElement.insertBefore(container, settingsLink);
+      setPortalTarget(container);
+
+      return () => {
+        try { container.remove(); } catch (e) {}
+      };
+    }
+    return;
+  }, [usePortal]);
  
    const toggleButton = (
      <button
@@ -73,7 +76,7 @@ export default function ThemeToggle({ isDark: isDarkProp, toggle }: Props): JSX.
        aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
        title={isDark ? 'Light mode' : 'Dark mode'}
        onClick={handleClick}
-      className={`relative inline-flex items-center p-1 w-14 h-8 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2`}
+       className="relative inline-flex items-center p-1 w-14 h-8 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2"
      >
       {/* Background oblong: light green gradient when inactive, green->dark-green when active */}
       <span
@@ -84,11 +87,11 @@ export default function ThemeToggle({ isDark: isDarkProp, toggle }: Props): JSX.
       <span
         className={`relative z-10 flex items-center justify-center bg-white w-7 h-7 rounded-full shadow-md transform transition-all ${isDark ? 'translate-x-5' : 'translate-x-0'}`}
       >
-        <span className={`${isDark ? 'text-white' : 'text-yellow-400'}`}>{isDark ? MOON_ICON : SUN_ICON}</span>
+        <span className={isDark ? 'text-slate-700' : 'text-yellow-400'}>{isDark ? MOON_ICON : SUN_ICON}</span>
       </span>
      </button>
    );
  
-   if (portalTarget) return createPortal(toggleButton, portalTarget);
+   if (usePortal && portalTarget) return createPortal(toggleButton, portalTarget);
    return toggleButton;
 }
