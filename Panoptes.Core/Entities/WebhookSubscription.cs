@@ -38,6 +38,10 @@ namespace Panoptes.Core.Entities
         public DateTime? FirstFailureInWindowAt { get; set; }
         public bool IsCircuitBroken { get; set; } = false;
         public string? CircuitBrokenReason { get; set; }
+        
+        // Pause functionality (persisted)
+        public bool IsPaused { get; set; } = false;
+        public DateTime? PausedAt { get; set; }
 
         public bool Matches(string? address, string? policyId)
         {
