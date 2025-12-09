@@ -41,8 +41,16 @@ export const getSubscription = async (id: string): Promise<WebhookSubscription> 
     return response.data;
 };
 
+// Existing test function (Backend generated payload)
 export const triggerTestEvent = async (id: string): Promise<DeliveryLog> => {
     const response = await api.post<DeliveryLog>(`/Subscriptions/test/${id}`);
+    return response.data;
+};
+
+// NEW: Direct test function (Frontend provided payload)
+export const triggerDirectWebhookTest = async (id: string, payload: any): Promise<any> => {
+    // Matches the C# route: [HttpPost("{id}/test")] inside SubscriptionsController
+    const response = await api.post<any>(`/Subscriptions/${id}/test`, payload);
     return response.data;
 };
 
