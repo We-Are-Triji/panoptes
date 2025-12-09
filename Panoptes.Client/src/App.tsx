@@ -1,15 +1,33 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { createContext, useEffect, useState } from 'react';
 import { Toaster } from 'react-hot-toast';
 import Dashboard from './pages/Dashboard';
 import SubscriptionDetail from './pages/SubscriptionDetail';
 import Settings from './pages/Settings';
 import { DashboardLayout } from './layouts/DashboardLayout';
+import Login from './pages/Login';
+import { onAuthChange } from './services/auth';
 
 export const ThemeContext = createContext<{
   isDark: boolean;
   setIsDark: (v: boolean) => void;
 }>({ isDark: false, setIsDark: () => {} });
+
+function RequireAuth({ children }: { children: JSX.Element }) {
+  const [user, setUser] = useState<any>(null);
+  const location = useLocation();
+  useEffect(() => {
+    const unsubscribe = onAuthChange(setUser);
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
+  if (user === null) {
+    // Not signed in
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+  return children;
+}
 
 function App() {
   const [isDark, setIsDark] = useState<boolean>(() => {
@@ -66,11 +84,12 @@ function App() {
       
       <Router>
         <Routes>
+          <Route path="/login" element={<Login />} />
           <Route element={<DashboardLayout />}>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/analytics" element={<Dashboard />} />
-            <Route path="/subscriptions/:id" element={<SubscriptionDetail />} />
-            <Route path="/settings" element={<Settings />} />
+            <Route path="/" element={<RequireAuth><Dashboard /></RequireAuth>} />
+            <Route path="/analytics" element={<RequireAuth><Dashboard /></RequireAuth>} />
+            <Route path="/subscriptions/:id" element={<RequireAuth><SubscriptionDetail /></RequireAuth>} />
+            <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
           </Route>
         </Routes>
       </Router>
