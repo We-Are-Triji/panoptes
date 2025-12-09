@@ -73,4 +73,46 @@ export const resetSubscription = async (id: string): Promise<WebhookSubscription
     return response.data;
 };
 
+export interface HealthResponse {
+    status: string;
+    timestamp: string;
+    version: string;
+    uptime: string;
+    checks: {
+        database: {
+            status: string;
+            responseTimeMs: number;
+            message: string;
+            error?: string;
+        };
+        utxoRpc: {
+            status: string;
+            latencyMs: number;
+            message: string;
+            error?: string;
+        };
+    };
+    metrics: {
+        activeSubscriptions: number;
+        totalSubscriptions: number;
+        lastBlockSynced?: number;
+        deliveriesLast24h: number;
+        successfulDeliveries: number;
+        failedDeliveries: number;
+        error?: string;
+    };
+    system: {
+        memoryUsageMb: number;
+        gcMemoryMb: number;
+        threadCount: number;
+        processStartTime: string;
+        error?: string;
+    };
+}
+
+export const getHealth = async (): Promise<HealthResponse> => {
+    const response = await api.get<HealthResponse>('/health');
+    return response.data;
+};
+
 export default api;
