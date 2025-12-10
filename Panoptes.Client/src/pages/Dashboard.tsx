@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { getSubscriptions, getLogs, createSubscription, triggerTestEvent, updateSubscription, deleteSubscription, toggleSubscriptionActive, resetSubscription } from '../services/api';
 import { WebhookSubscription, DeliveryLog } from '../types';
+import { Inbox } from 'lucide-react';
 
 // --- COMPONENTS ---
 import StatCard from '../components/StatCard';
@@ -15,9 +16,12 @@ import EditSubscriptionModal from '../components/EditSubscriptionModal';
 import ConfirmationModal from '../components/ConfirmationModal';
 import StatsDashboard from '../components/StatsDashboard';
 import { SetupWizard } from '../components/SetupWizard';
+import { EmptyState } from '../components/EmptyState';
+import { OnboardingTour } from '../components/OnboardingTour';
 
 // --- HOOKS ---
 import { useSubscriptionFilters } from '../hooks/useSubscriptionFilters';
+import { SUBSCRIPTION_TEMPLATES, SubscriptionTemplate } from '../config/templates';
 
 interface SystemInfo {
   network: string;
@@ -60,6 +64,9 @@ const Dashboard: React.FC = () => {
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
   const [showSetupWizard, setShowSetupWizard] = useState(false);
+
+  // Modal initial values
+  const [initialModalValues, setInitialModalValues] = useState<{ name?: string; eventType?: string } | undefined>(undefined);
 
   // --- FILTERS ---
   const {
@@ -124,9 +131,8 @@ const Dashboard: React.FC = () => {
       const response = await fetch('/setup/status');
       const data = await response.json();
       setSetupStatus(data);
-      if (!data.isConfigured) {
-        setShowSetupWizard(true);
-      }
+      // We don't set showSetupWizard here anymore, we let the useEffect handle it
+      // based on tourCompleted state
     } catch (error) {
       console.error("Error fetching setup status:", error);
     }
@@ -270,8 +276,30 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  const handleTemplateSelect = (template: SubscriptionTemplate) => {
+    setInitialModalValues({
+      name: template.title,
+      eventType: template.eventType,
+    });
+    setIsModalOpen(true);
+  };
+
+  const SETUP_WIZARD_SHOWN_KEY = 'panoptes_setup_wizard_shown';
+
+  const handleTourFinish = () => {
+    console.log("Tour finished");
+    // Only show the setup wizard once after onboarding
+    const alreadyShown = localStorage.getItem(SETUP_WIZARD_SHOWN_KEY);
+    if (!alreadyShown) {
+      console.log("Showing setup wizard for the first time");
+      setShowSetupWizard(true);
+      localStorage.setItem(SETUP_WIZARD_SHOWN_KEY, 'true');
+    }
+  };
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
+      <OnboardingTour enabled={true} onFinish={handleTourFinish} />
       {/* Header with System Info */}
       {systemInfo && (
         <div className="mb-6 flex items-center gap-3">
@@ -312,7 +340,7 @@ const Dashboard: React.FC = () => {
         )}
 
         {/* Stats - Shown on both views */}
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-3 mb-8">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-3 mb-8" data-tour="stats-overview">
           <StatCard
             title="Active Hooks"
             value={subscriptions.filter(s => s.isActive).length}
@@ -359,34 +387,42 @@ const Dashboard: React.FC = () => {
       </h2>
 
       <button
-        onClick={() => setIsModalOpen(true)}
-        disabled={!setupStatus?.isConfigured}
+        onClick={() => {
+          if (!setupStatus?.isConfigured) {
+            setShowSetupWizard(true);
+          } else {
+            setIsModalOpen(true);
+          }
+        }}
+        data-tour="create-subscription"
         className={`px-4 py-2 rounded-tech text-sm font-medium transition-colors ${
           setupStatus?.isConfigured
             ? 'bg-sentinel hover:bg-sentinel-hover'
-            : 'bg-gray-300 cursor-not-allowed dark:bg-gray-700'
+            : 'bg-gray-400 hover:bg-gray-500'
         } text-white`}
         style={{ color: '#ffffff' }}
-        title={!setupStatus?.isConfigured ? 'Complete setup first' : ''}
+        title={!setupStatus?.isConfigured ? 'Click to configure API' : ''}
       >
-        New Subscription
+        {setupStatus?.isConfigured ? 'New Subscription' : 'Configure API'}
       </button>
     </div>
 
     {/* Filters */}
-    <SubscriptionFilters
-      searchQuery={searchQuery}
-      statusFilter={statusFilter}
-      eventTypeFilter={eventTypeFilter}
-      sortBy={sortBy}
-      activeFilterCount={activeFilterCount}
-      availableEventTypes={availableEventTypes}
-      onSearchChange={setSearchQuery}
-      onStatusChange={setStatusFilter}
-      onEventTypeChange={setEventTypeFilter}
-      onSortChange={setSortBy}
-      onClearFilters={clearFilters}
-    />
+    <div data-tour="filters">
+      <SubscriptionFilters
+        searchQuery={searchQuery}
+        statusFilter={statusFilter}
+        eventTypeFilter={eventTypeFilter}
+        sortBy={sortBy}
+        activeFilterCount={activeFilterCount}
+        availableEventTypes={availableEventTypes}
+        onSearchChange={setSearchQuery}
+        onStatusChange={setStatusFilter}
+        onEventTypeChange={setEventTypeFilter}
+        onSortChange={setSortBy}
+        onClearFilters={clearFilters}
+      />
+    </div>
 
     {/* Filter Counter */}
     {subscriptions.length > 0 && (
@@ -397,27 +433,43 @@ const Dashboard: React.FC = () => {
       </div>
     )}
 
-    {/* Grid */}
-    <SubscriptionGrid
-      subscriptions={filteredSubscriptions}
-      loading={loading}
-      onSelectSubscription={setViewingSubscription}
-      onTest={handleTest}
-      onEdit={(id) => {
-        const sub = subscriptions.find(s => s.id === id);
-        if (sub) handleEdit(sub);
-      }}
-      onDelete={(id) => {
-        const sub = subscriptions.find(s => s.id === id);
-        if (sub) handleDeleteClick(sub);
-      }}
-      onToggleActive={handleToggleActive}
-      onReset={handleReset}
-    />
+    {/* Grid or Empty State */}
+    {subscriptions.length === 0 && !loading ? (
+      <EmptyState
+        icon={Inbox}
+        title="No Subscriptions Yet"
+        description="Create your first subscription to start monitoring blockchain events. Choose a template below or create a custom one."
+        action={{
+          label: "Create Subscription",
+          onClick: () => setIsModalOpen(true)
+        }}
+        secondaryActions={SUBSCRIPTION_TEMPLATES.map(t => ({
+          label: t.title,
+          onClick: () => handleTemplateSelect(t)
+        }))}
+      />
+    ) : (
+      <SubscriptionGrid
+        subscriptions={filteredSubscriptions}
+        loading={loading}
+        onSelectSubscription={setViewingSubscription}
+        onTest={handleTest}
+        onEdit={(id) => {
+          const sub = subscriptions.find(s => s.id === id);
+          if (sub) handleEdit(sub);
+        }}
+        onDelete={(id) => {
+          const sub = subscriptions.find(s => s.id === id);
+          if (sub) handleDeleteClick(sub);
+        }}
+        onToggleActive={handleToggleActive}
+        onReset={handleReset}
+      />
+    )}
   </div>
 
   {/* Right Column: Recent Logs (1/3 width) */}
-  <div className="lg:col-span-1">
+  <div className="lg:col-span-1" data-tour="recent-logs">
     <div className="bg-card shadow rounded-lg">
       <div className="px-6 py-5 border-b border-border flex justify-between items-center">
         <h2 className="text-lg font-medium text-foreground">Recent Logs</h2>
@@ -440,8 +492,12 @@ const Dashboard: React.FC = () => {
         {/* Create Subscription Modal */}
         <CreateSubscriptionModal
           isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
+          onClose={() => {
+            setIsModalOpen(false);
+            setInitialModalValues(undefined);
+          }}
           onCreate={handleCreate}
+          initialValues={initialModalValues}
         />
 
         {/* Edit Subscription Modal */}
@@ -474,7 +530,7 @@ const Dashboard: React.FC = () => {
         {showSetupWizard && (
           <SetupWizard onComplete={handleSetupComplete} />
         )}
-    </div>
+      </div>
   );
 };
 
