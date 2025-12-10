@@ -151,19 +151,21 @@ namespace Panoptes.Api.Workers
                         var dbContext = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
                         
                         // Determine start point
+                        
+                        // Determine start point
                         var intersections = new List<Point>();
                         
-                        // Check DB for checkpoint
+                        // 1. Check DB for checkpoint (HIGHEST PRIORITY)
                         var lastSyncedState = await dbContext.SystemStates
                             .AsNoTracking()
                             .FirstOrDefaultAsync(s => s.Key == "LastSyncedSlot", stoppingToken);
 
-                        string? startHash = _config.StartHash;
+                        string? startHash = null;
                         ulong? startSlot = null;
 
+                        // A. RESUME: If we have data in DB, respect it absolutely.
                         if (lastSyncedState != null && ulong.TryParse(lastSyncedState.Value, out var savedSlot))
                         {
-                            // Check if we have a saved hash as well
                             var lastSyncedHash = await dbContext.SystemStates
                                 .AsNoTracking()
                                 .FirstOrDefaultAsync(s => s.Key == "LastSyncedHash", stoppingToken);
@@ -174,39 +176,40 @@ namespace Panoptes.Api.Workers
                                 startHash = lastSyncedHash.Value;
                                 _logger.LogInformation("Resuming from checkpoint: Slot {Slot}, Hash {Hash}", startSlot, startHash);
                             }
-                            else
-                            {
-                                _logger.LogWarning("Found checkpoint slot {Slot} but missing hash. Using configured start point.", savedSlot);
-                            }
                         }
                         
-                        // Fall back to config if no valid checkpoint
-                        if (startSlot == null && _config.StartSlot.HasValue && !string.IsNullOrEmpty(_config.StartHash))
-                        {
-                            startSlot = (ulong)_config.StartSlot.Value;
-                            startHash = _config.StartHash;
-                            _logger.LogInformation("Using configured start point: Slot {Slot}, Hash {Hash}", startSlot, startHash);
-                        }
-
-                        // If still no valid start point, fetch the current chain tip dynamically
+                        // B. FRESH START: If DB is empty, IGNORE appsettings.json to prevent flood.
+                        // We force a fast-forward to the network tip.
                         if (startSlot == null || string.IsNullOrEmpty(startHash))
                         {
-                            _logger.LogInformation("No valid start point found. Fetching current chain tip...");
+                            _logger.LogInformation("⚠️ Fresh database detected. Ignoring configured StartSlot to prevent webhook flood.");
+                            _logger.LogInformation("Fetching current chain tip from UtxoRPC...");
+
                             try
                             {
+                                // Fetch Tip directly from the provider (Works for Mainnet/Preprod/Preview automatically)
                                 var tip = await provider.GetTipAsync(0, stoppingToken);
+                                
                                 startSlot = tip.Slot;
                                 startHash = tip.Hash;
-                                _logger.LogInformation("Fetched chain tip: Slot {Slot}, Hash {Hash}", startSlot, startHash);
+                                
+                                // OPTIONAL: Save this starting point immediately to DB so restarts don't fetch tip again
+                                // This is safe because we haven't processed any blocks yet
+                                dbContext.SystemStates.Add(new SystemState { Key = "LastSyncedSlot", Value = startSlot.ToString() });
+                                dbContext.SystemStates.Add(new SystemState { Key = "LastSyncedHash", Value = startHash });
+                                await dbContext.SaveChangesAsync(stoppingToken);
+
+                                _logger.LogInformation("🚀 Fast-forwarded to Network Tip: Slot {Slot}, Hash {Hash}", startSlot, startHash);
                             }
                             catch (Exception ex)
                             {
-                                _logger.LogError(ex, "Failed to fetch chain tip. Retrying in 5 seconds...");
+                                _logger.LogError(ex, "❌ Failed to fetch chain tip. Retrying in 5 seconds...");
                                 await Task.Delay(5000, stoppingToken);
-                                continue;
+                                continue; // Restart the loop to try fetching tip again
                             }
                         }
 
+                        // Add the calculated start point to intersections
                         intersections.Add(new Point(startHash, startSlot.Value));
 
                         // Network Magic: Mainnet = 764824073, Preprod = 1, Preview = 2
