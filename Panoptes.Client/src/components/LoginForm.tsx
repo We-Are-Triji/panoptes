@@ -1,7 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
+import { useAuth } from '../context/AuthContext';
+import toast from 'react-hot-toast';
+import { confirmSignUp } from 'aws-amplify/auth'; // Import direct for the quick fix
 
 interface LoginFormProps {
   mode: 'signin' | 'signup';
@@ -14,6 +17,9 @@ interface FormValues {
 }
 
 export const LoginForm: React.FC<LoginFormProps> = ({ mode }) => {
+  const { login, register: registerUser } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
+  
   const {
     register,
     handleSubmit,
@@ -21,9 +27,62 @@ export const LoginForm: React.FC<LoginFormProps> = ({ mode }) => {
     watch,
   } = useForm<FormValues>();
 
-  const onSubmit = (data: FormValues) => {
-    // Stub: Show a message for now
-    alert(`Form submitted!\nMode: ${mode}\nEmail: ${data.email}`);
+  const onSubmit = async (data: FormValues) => {
+    setIsLoading(true);
+    try {
+      if (mode === 'signin') {
+        const result = await login({ 
+            username: data.email, 
+            password: data.password 
+        });
+        
+        if (result.isSignedIn) {
+            toast.success("ACCESS GRANTED");
+            // App.tsx will handle redirect via context state change
+        } else if (result.nextStep.signInStep === 'CONFIRM_SIGN_UP') {
+             // Handle case where user exists but isn't verified
+             handleVerification(data.email);
+        }
+      } else {
+        // Sign Up Mode
+        const { nextStep } = await registerUser({
+            username: data.email,
+            password: data.password,
+            options: {
+                userAttributes: {
+                    email: data.email // Required for standard Cognito config
+                }
+            }
+        });
+
+        if (nextStep.signUpStep === 'CONFIRM_SIGN_UP') {
+            toast.success("Account created. Verification code sent.");
+            handleVerification(data.email);
+        } else if (nextStep.signUpStep === 'COMPLETE_AUTO_SIGN_IN') {
+             toast.success("Account created successfully!");
+        }
+      }
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error.message || "Authentication failed");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Temporary helper to handle verification without a full UI page yet
+  const handleVerification = async (email: string) => {
+    const code = window.prompt(`Enter the verification code sent to ${email}:`);
+    if (!code) return;
+    
+    try {
+        await confirmSignUp({ username: email, confirmationCode: code });
+        toast.success("Verified! Please sign in.");
+        // Optional: Switch mode to 'signin' via parent prop if we lifted state up
+        // For now, user just clicks "Have ID?"
+    } catch (err: any) {
+        toast.error(`Verification failed: ${err.message}`);
+    }
   };
 
   return (
@@ -41,6 +100,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ mode }) => {
           })}
           className="w-full"
           placeholder="you@example.com"
+          disabled={isLoading}
         />
         {errors.email && <span className="text-destructive text-xs mt-1">{errors.email.message}</span>}
       </div>
@@ -58,6 +118,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ mode }) => {
           })}
           className="w-full"
           placeholder="••••••••"
+          disabled={isLoading}
         />
         {errors.password && <span className="text-destructive text-xs mt-1">{errors.password.message}</span>}
       </div>
@@ -73,6 +134,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ mode }) => {
             })}
             className="w-full"
             placeholder="••••••••"
+            disabled={isLoading}
           />
           {errors.confirmPassword && (
             <span className="text-destructive text-xs mt-1">{errors.confirmPassword.message}</span>
@@ -92,8 +154,11 @@ export const LoginForm: React.FC<LoginFormProps> = ({ mode }) => {
         )}
       </div>
 
-      <Button type="submit" className="w-full mt-4 font-sans">
-        {mode === 'signin' ? 'SIGN IN' : 'CREATE ACCOUNT'}
+      <Button type="submit" className="w-full mt-4 font-sans" disabled={isLoading}>
+        {isLoading 
+            ? <span className="animate-pulse">PROCESSING...</span> 
+            : (mode === 'signin' ? 'SIGN IN' : 'CREATE ACCOUNT')
+        }
       </Button>
     </form>
   );

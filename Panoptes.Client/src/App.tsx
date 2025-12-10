@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { createContext, useEffect, useState } from 'react';
 import { Toaster } from 'react-hot-toast';
 import Dashboard from './pages/Dashboard';
@@ -8,17 +8,36 @@ import Health from './pages/Health';
 import { DashboardLayout } from './layouts/DashboardLayout';
 import Login from './pages/Login';
 import Landing from './pages/Landing';
-
+import { AuthProvider, useAuth } from './context/AuthContext'; // Import Auth
 
 export const ThemeContext = createContext<{
   isDark: boolean;
   setIsDark: (v: boolean) => void;
 }>({ isDark: false, setIsDark: () => {} });
 
-
+// Real Auth Guard
 function RequireAuth({ children }: { children: JSX.Element }) {
-  // Stub: always allow access for now
+  const { user, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    // Simple loading state
+    return <div className="min-h-screen bg-black flex items-center justify-center text-sentinel font-mono">INITIALIZING_UPLINK...</div>;
+  }
+
+  if (!user) {
+    return <Navigate to="/landing" state={{ from: location }} replace />;
+  }
+
   return <>{children}</>;
+}
+
+// Redirects authenticated users away from Landing/Login
+function RedirectIfAuthenticated({ children }: { children: JSX.Element }) {
+    const { user, loading } = useAuth();
+    if (loading) return null;
+    if (user) return <Navigate to="/" replace />;
+    return <>{children}</>;
 }
 
 function App() {
@@ -41,53 +60,35 @@ function App() {
   }, [isDark]);
 
   return (
-    <ThemeContext.Provider value={{ isDark, setIsDark }}>
-      <Toaster
-        position="top-right"
-        toastOptions={{
-          style: {
-            background: '#333',
-            color: '#fff',
-          },
-          success: {
-            duration: 4000,
-            style: {
-              background: '#10b981',
-              color: '#fff',
-            },
-            iconTheme: {
-              primary: '#fff',
-              secondary: '#10b981',
-            },
-          },
-          error: {
-            duration: 5000,
-            style: {
-              background: '#ef4444',
-              color: '#fff',
-            },
-            iconTheme: {
-              primary: '#fff',
-              secondary: '#ef4444',
-            },
-          },
-        }}
-      />
-      
-      <Router>
-        <Routes>
-          <Route path="/landing" element={<Landing />} />
-          <Route path="/login" element={<Login />} />
-          <Route element={<DashboardLayout />}>
-            <Route path="/" element={<RequireAuth><Dashboard /></RequireAuth>} />
-            <Route path="/analytics" element={<RequireAuth><Dashboard /></RequireAuth>} />
-            <Route path="/health" element={<RequireAuth><Health /></RequireAuth>} />
-            <Route path="/subscriptions/:id" element={<RequireAuth><SubscriptionDetail /></RequireAuth>} />
-            <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
-          </Route>
-        </Routes>
-      </Router>
-    </ThemeContext.Provider>
+    <AuthProvider>
+      <ThemeContext.Provider value={{ isDark, setIsDark }}>
+        <Toaster
+            position="top-right"
+            toastOptions={{
+            style: { background: '#333', color: '#fff' },
+            success: { style: { background: '#10b981', color: '#fff' } },
+            error: { style: { background: '#ef4444', color: '#fff' } },
+            }}
+        />
+        
+        <Router>
+            <Routes>
+                {/* Public Routes (Redirect to Dashboard if logged in) */}
+                <Route path="/landing" element={<RedirectIfAuthenticated><Landing /></RedirectIfAuthenticated>} />
+                <Route path="/login" element={<RedirectIfAuthenticated><Login /></RedirectIfAuthenticated>} />
+                
+                {/* Protected Routes */}
+                <Route element={<DashboardLayout />}>
+                    <Route path="/" element={<RequireAuth><Dashboard /></RequireAuth>} />
+                    <Route path="/analytics" element={<RequireAuth><Dashboard /></RequireAuth>} />
+                    <Route path="/health" element={<RequireAuth><Health /></RequireAuth>} />
+                    <Route path="/subscriptions/:id" element={<RequireAuth><SubscriptionDetail /></RequireAuth>} />
+                    <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
+                </Route>
+            </Routes>
+        </Router>
+      </ThemeContext.Provider>
+    </AuthProvider>
   );
 }
 
