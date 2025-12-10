@@ -1,13 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Activity } from 'lucide-react';
 
 import {
   getSubscription,
   getSubscriptionLogs,
   updateSubscription,
   deleteSubscription,
-  triggerTestEvent,
   resetSubscription,
   toggleSubscriptionActive
 } from '../services/api';
@@ -20,13 +18,8 @@ import Pagination from '../components/Pagination';
 
 import ExportButton from '../components/ExportButton';
 import WebhookTester from '../components/WebhookTester';
-import DeliveryLogsTable from '../components/DeliveryLogsTable'; // <--- NEW IMPORT
+import DeliveryLogsTable from '../components/DeliveryLogsTable';
 import { convertToCSV, downloadFile, generateFilename } from '../utils/exportUtils';
-
-import ExportButton from '../components/ExportButton'; 
-import WebhookTester from '../components/WebhookTester'; // <--- NEW IMPORT
-import { convertToCSV, downloadFile, generateFilename } from '../utils/exportUtils'; 
-import { EmptyState } from '../components/EmptyState';
 
 
 // --- PROPS INTERFACE ---
@@ -173,17 +166,6 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription: p
   const handleBack = () => {
     if (onBack) onBack();
     else navigate('/');
-  };
-
-  const handleTest = async () => {
-    if (!activeId) return;
-    try {
-      await triggerTestEvent(activeId);
-      fetchLogs();
-    } catch (error: any) {
-      console.error("Error triggering test:", error);
-      alert("Failed to trigger test webhook.");
-    }
   };
 
   const handleEditSave = async (data: Partial<WebhookSubscription>) => {
@@ -470,107 +452,6 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription: p
             onPageChange={setCurrentPage}
           />
         </div>
-
-         <div className="p-6 pb-2">
-            <h3 className="text-lg font-bold text-gray-900">Delivery Logs</h3>
-            <p className="text-xs text-gray-500 mt-2">
-                Showing page {currentPage} of {Math.ceil(totalLogs / itemsPerPage) || 1}
-            </p>
-         </div>
-         
-         {loading && logs.length === 0 ? (
-             <div className="p-10 text-center text-gray-500">Loading logs...</div>
-         ) : logs.length === 0 ? (
-             <EmptyState
-               icon={Activity}
-               title="No Delivery Logs"
-               description="We haven't delivered any webhooks for this subscription yet. Trigger a test event to verify your integration."
-               action={{
-                 label: "Trigger Test Event",
-                 onClick: () => setShowTester(true)
-               }}
-               className="py-12"
-             />
-         ) : (
-             <div className="mt-4">
-                {/* Header */}
-                <div className="grid grid-cols-12 gap-4 px-6 py-2 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100 hidden sm:grid">
-                    <div className="col-span-3">Time</div>
-                    <div className="col-span-2">Status</div>
-                    <div className="col-span-2">Latency</div>
-                    <div className="col-span-5">Response</div>
-                </div>
-
-                {/* Rows */}
-                <div className="divide-y divide-gray-100">
-                    {logs.map((log) => {
-                        const timeValue = (log as any).timestamp || (log as any).createdAt || new Date();
-                        const isExpanded = expandedLogId === log.id;
-                        
-                        // Extract with the robust helper
-                        const payloadData = getPayload(log); 
-                        const responseData = getResponseBody(log);
-
-                        return (
-                            <div key={log.id} className="group transition-colors">
-                                <div 
-                                    onClick={() => toggleRow(log.id)}
-                                    className={`grid grid-cols-1 sm:grid-cols-12 gap-4 px-6 py-4 text-sm cursor-pointer hover:bg-gray-50 items-center ${isExpanded ? 'bg-gray-50' : ''}`}
-                                >
-                                    <div className="sm:col-span-3 text-gray-600 text-xs sm:text-sm">
-                                        {new Date(timeValue).toLocaleString()}
-                                    </div>
-                                    <div className="sm:col-span-2 font-mono flex items-center justify-between sm:justify-start gap-4">
-                                        <span className="sm:hidden font-bold text-gray-500">Status:</span>
-                                        {renderStatusBadge(log.responseStatusCode)}
-                                    </div>
-                                    <div className="sm:col-span-2 font-mono text-gray-500 flex items-center justify-between sm:justify-start gap-4">
-                                        <span className="sm:hidden font-bold text-gray-500">Latency:</span>
-                                        {log.latencyMs}ms
-                                    </div>
-                                    <div className="sm:col-span-5 font-mono text-xs text-gray-400 truncate hidden sm:block">
-                                        {responseData ? String(responseData).substring(0, 50) : '-'}
-                                    </div>
-                                </div>
-
-                                {isExpanded && (
-                                    <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 animate-in slide-in-from-top-2 duration-200">
-                                        <div className="space-y-6">
-                                            {/* PAYLOAD SECTION */}
-                                            <div>
-                                                <h4 className="text-xs font-bold text-gray-500 uppercase mb-2">Payload</h4>
-                                                <div className="bg-white rounded border border-gray-200 p-4 font-mono text-xs text-gray-700 overflow-x-auto">
-                                                    <pre>{payloadData ? formatJson(payloadData) : <span className="text-gray-400 italic">No payload content found (Received null)</span>}</pre>
-                                                </div>
-                                            </div>
-
-                                            {/* RESPONSE SECTION */}
-                                            <div>
-                                                <h4 className="text-xs font-bold text-gray-500 uppercase mb-2">Response</h4>
-                                                <div className="bg-white rounded border border-gray-200 p-4 font-mono text-xs text-gray-700 overflow-x-auto">
-                                                    <pre>{responseData ? formatJson(responseData) : <span className="text-gray-400 italic">No response content</span>}</pre>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
-                
-                {/* Pagination */}
-                <div className="p-4 border-t border-gray-200">
-                    <Pagination
-                        currentPage={currentPage}
-                        totalItems={totalLogs}
-                        itemsPerPage={itemsPerPage}
-                        onPageChange={setCurrentPage}
-                    />
-                </div>
-             </div>
-         )}
-
       </div>
 
       {/* MODALS */}

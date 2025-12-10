@@ -21,7 +21,6 @@ const RetryTimeline: React.FC<RetryTimelineProps> = ({ attempts }) => {
     <div className="relative pl-4 border-l-2 border-gray-200 dark:border-gray-700 ml-2 space-y-6 my-4">
       {attempts.map((attempt, index) => {
         const isSuccess = attempt.status === 'success';
-        const isLast = index === attempts.length - 1;
 
         return (
           <div key={attempt.id} className="relative animate-in slide-in-from-left-2 duration-300" style={{ animationDelay: `${index * 50}ms` }}>
