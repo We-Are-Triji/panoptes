@@ -16,6 +16,7 @@
 
 # Environment Variables (CRITICAL for security)
 .env
+.env.backend
 .env.local
 .env.*.local
 .env.production

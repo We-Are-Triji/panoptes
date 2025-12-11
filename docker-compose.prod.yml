@@ -1,0 +1,38 @@
+services:
+  # 1. PostgreSQL Database
+  postgres:
+    image: postgres:17-alpine
+    container_name: panoptes_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: panoptes_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # 2. .NET Backend API
+  api:
+    build:
+      context: .
+      dockerfile: Panoptes.Api/Dockerfile
+    container_name: panoptes_api
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=panoptes_db;Username=postgres;Password=${DB_PASSWORD}
+      # Critical: Allow connections from anywhere (CloudFront/Internet)
+      - ASPNETCORE_URLS=http://+:5033
+      # We will pass these via a .env file on the server
+      - Argus__GrpcEndpoint=${ARGUS_ENDPOINT}
+      - Argus__ApiKey=${ARGUS_API_KEY}
+      - Argus__Network=${ARGUS_NETWORK}
+    ports:
+      - "5033:5033"
+
+volumes:
+  postgres_data:
