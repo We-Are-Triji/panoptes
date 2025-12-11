@@ -19,6 +19,7 @@ import Pagination from '../components/Pagination';
 import ExportButton from '../components/ExportButton';
 import WebhookTester from '../components/WebhookTester';
 import DeliveryLogsTable from '../components/DeliveryLogsTable';
+import AdvancedOptionsModal from '../components/AdvancedOptionsModal';
 import { convertToCSV, downloadFile, generateFilename } from '../utils/exportUtils';
 
 
@@ -58,6 +59,7 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription: p
   // Modal States
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isAdvancedOptionsOpen, setIsAdvancedOptionsOpen] = useState(false);
 
   // Note: We removed expandedLogId state because DeliveryLogsTable now handles that internally
 
@@ -320,32 +322,59 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription: p
         <div className="flex justify-between items-start mb-6">
           <div className="flex items-center gap-3">
             <h3 className="text-lg font-bold text-gray-900">Subscription Details</h3>
-            <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${subscription.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-              }`}>
-              {subscription.isActive ? 'Active' : 'Inactive'}
-            </span>
+            {/* Status Button/Indicator - Same as collapsed card */}
+            {subscription.isRateLimited || subscription.isCircuitBroken ? (
+              // Disabled state - clicking will reset
+              <button
+                onClick={handleReset}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-100 hover:bg-red-200 text-red-700 border border-red-200 shadow-sm transition-all duration-200 cursor-pointer hover:shadow-md"
+                title={subscription.isCircuitBroken ? 'Disabled: Circuit breaker triggered - Click to reset' : 'Disabled: Rate limited - Click to reset'}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-red-600">
+                  <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+                </svg>
+                <span className="text-xs font-bold uppercase tracking-wide">Disabled</span>
+              </button>
+            ) : subscription.isActive ? (
+              // Active state - clicking will pause
+              <button
+                onClick={handleToggleActive}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-100 hover:bg-green-200 text-green-700 border border-green-200 shadow-sm transition-all duration-200 cursor-pointer hover:shadow-md"
+                title="Click to pause"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-green-600 animate-pulse">
+                  <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                </svg>
+                <span className="text-xs font-bold uppercase tracking-wide">Active</span>
+              </button>
+            ) : (
+              // Paused state - clicking will activate
+              <button
+                onClick={handleToggleActive}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-700 border border-amber-200 shadow-sm transition-all duration-200 cursor-pointer hover:shadow-md"
+                title="Click to activate"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-amber-600">
+                  <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+                </svg>
+                <span className="text-xs font-bold uppercase tracking-wide">Paused</span>
+              </button>
+            )}
           </div>
           <div className="flex gap-2 items-center">
 
-            {/* --- LATEST ONLY TOGGLE (PRESERVED) --- */}
-            {!subscription.isRateLimited && !subscription.isCircuitBroken && (
-              <label className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-md cursor-pointer hover:bg-gray-200 transition-colors" title="When enabled, only the latest halted event will be delivered on resume">
-                <span className="text-xs font-medium text-gray-600">Latest Only</span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={deliverLatestOnly}
-                  onClick={() => handleDeliverLatestOnlyChange(!deliverLatestOnly)}
-                  className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 ${deliverLatestOnly ? 'bg-amber-500' : 'bg-gray-300'
-                    }`}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${deliverLatestOnly ? 'translate-x-4' : 'translate-x-0'
-                      }`}
-                  />
-                </button>
-              </label>
-            )}
+            {/* --- ADVANCED OPTIONS BUTTON --- */}
+            <button
+              onClick={() => setIsAdvancedOptionsOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 shadow-sm transition-colors"
+              title="Advanced Options"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+              </svg>
+              <span>Advanced</span>
+            </button>
 
             {/* EXPORT BUTTON */}
             <ExportButton onExport={handleExportLogs} disabled={totalLogs === 0} />
@@ -472,6 +501,13 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription: p
             confirmVariant="danger"
             onConfirm={handleDeleteConfirm}
             onCancel={() => setIsDeleteModalOpen(false)}
+          />
+          <AdvancedOptionsModal
+            isOpen={isAdvancedOptionsOpen}
+            onClose={() => setIsAdvancedOptionsOpen(false)}
+            subscriptionName={subscription.name}
+            deliverLatestOnly={deliverLatestOnly}
+            onDeliverLatestOnlyChange={handleDeliverLatestOnlyChange}
           />
         </>
       )}
