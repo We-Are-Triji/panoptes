@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation} from 'react-router-dom';
 import { createContext, useEffect, useState } from 'react';
 import { Toaster } from 'react-hot-toast';
 import Dashboard from './pages/Dashboard';
@@ -7,45 +7,44 @@ import Settings from './pages/Settings';
 import Health from './pages/Health';
 import { DashboardLayout } from './layouts/DashboardLayout';
 import Landing from './pages/Landing';
-import { useAuth } from './context/AuthContext';
+import { useAuth, AuthProvider } from './context/AuthContext'; // 1. Import AuthProvider
 
 export const ThemeContext = createContext<{
   isDark: boolean;
   setIsDark: (v: boolean) => void;
 }>({ isDark: false, setIsDark: () => {} });
 
-// 1. Auth Guard: Protects the Dashboard
+// --- GUARDS ---
+
+// 1. Auth Guard: Protects the Dashboard Routes
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user, loading } = useAuth();
   const location = useLocation();
 
   if (loading) {
-    // Silent loading state (or minimal spinner)
-    return <div className="min-h-screen bg-black" />;
+    return <div className="min-h-screen bg-black" />; // Silent loading
   }
 
   if (!user) {
-    // If not logged in, kick them back to the Landing Page
+    // Redirect them to the Landing Page ("/") if not logged in
     return <Navigate to="/" state={{ from: location }} replace />;
   }
 
   return <>{children}</>;
 }
 
-// TODO:
-// 2. Guest Guard: Protects the Landing Page
-// If they are already logged in, don't show them the landing page
-// function RedirectIfAuthenticated({ children }: { children: JSX.Element }) {
-//     const { user, loading } = useAuth();
+// 2. Guest Guard: Redirects logged-in users away from Landing
+function RedirectIfAuthenticated({ children }: { children: JSX.Element }) {
+    const { user, loading } = useAuth();
     
-//     if (loading) return null;
+    if (loading) return null;
     
-//     if (user) {
-//         return <Navigate to="/dashboard" replace />;
-//     }
+    if (user) {
+        return <Navigate to="/dashboard" replace />;
+    }
     
-//     return <>{children}</>;
-// }
+    return <>{children}</>;
+}
 
 function App() {
   const [isDark, setIsDark] = useState<boolean>(() => {
@@ -68,50 +67,61 @@ function App() {
 
   return (
     <ThemeContext.Provider value={{ isDark, setIsDark }}>
-      <Toaster
-        position="top-right"
-        toastOptions={{
-          style: {
-            background: '#333',
-            color: '#fff',
-          },
-          success: {
-            duration: 4000,
-            style: {
-              background: '#10b981',
-              color: '#fff',
+      {/* 2. WRAP EVERYTHING IN AUTHPROVIDER */}
+      <AuthProvider>
+        <Toaster
+          position="top-right"
+          toastOptions={{
+            style: { background: '#333', color: '#fff' },
+            success: {
+              style: { background: '#10b981', color: '#fff' },
+              iconTheme: { primary: '#fff', secondary: '#10b981' },
             },
-            iconTheme: {
-              primary: '#fff',
-              secondary: '#10b981',
+            error: {
+              style: { background: '#ef4444', color: '#fff' },
+              iconTheme: { primary: '#fff', secondary: '#ef4444' },
             },
-          },
-          error: {
-            duration: 5000,
-            style: {
-              background: '#ef4444',
-              color: '#fff',
-            },
-            iconTheme: {
-              primary: '#fff',
-              secondary: '#ef4444',
-            },
-          },
-        }}
-      />
-      
-      <Router>
-        <Routes>
-          <Route path="/landing" element={<Landing />} />
-          <Route element={<DashboardLayout />}>
-            <Route path="/" element={<RequireAuth><Dashboard /></RequireAuth>} />
-            <Route path="/analytics" element={<RequireAuth><Dashboard /></RequireAuth>} />
-            <Route path="/health" element={<RequireAuth><Health /></RequireAuth>} />
-            <Route path="/subscriptions/:id" element={<RequireAuth><SubscriptionDetail /></RequireAuth>} />
-            <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
-          </Route>
-        </Routes>
-      </Router>
+          }}
+        />
+        
+        <Router>
+          <Routes>
+            {/* PUBLIC ROUTE: Landing Page 
+                Wrapped in RedirectIfAuthenticated so logged-in users go straight to dashboard 
+            */}
+            <Route 
+                path="/" 
+                element={
+                    <RedirectIfAuthenticated>
+                        <Landing />
+                    </RedirectIfAuthenticated>
+                } 
+            />
+
+            {/* PROTECTED ROUTES: Dashboard Area 
+                Moved to "/dashboard" to avoid conflict with Landing
+            */}
+            <Route 
+                path="/dashboard" 
+                element={
+                    <RequireAuth>
+                        <DashboardLayout />
+                    </RequireAuth>
+                }
+            >
+              <Route index element={<Dashboard />} />
+              <Route path="analytics" element={<Dashboard />} />
+              <Route path="health" element={<Health />} />
+              <Route path="subscriptions/:id" element={<SubscriptionDetail />} />
+              <Route path="settings" element={<Settings />} />
+            </Route>
+
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+
+          </Routes>
+        </Router>
+      </AuthProvider>
     </ThemeContext.Provider>
   );
 }
