@@ -76,7 +76,9 @@ using (var scope = app.Services.CreateScope())
         
         // EnsureCreated() will create the DB and Tables if they don't exist.
         // It's robust enough for a dev migration.
-        var created = db.Database.EnsureCreated();
+        Console.WriteLine("Applying EF Core Migrations...");
+        db.Database.Migrate(); // Automatically applies pending migrations on startup
+        Console.WriteLine("Migrations applied successfully.");
         
         if (created)
         {
