@@ -18,6 +18,7 @@
 .env
 .env.local
 .env.*.local
+.env.production
 appsettings.Development.json
 appsettings.Local.json
 **/appsettings.*.json
