@@ -54,7 +54,7 @@ export function StickyFooter() {
            <div className="mx-auto w-full max-w-[1600px] border-t border-white/5 pt-8 md:pt-12 flex flex-col md:flex-row items-start md:items-end justify-between gap-6">
               <div className="flex flex-col gap-1 order-2 md:order-1">
                  <p className="font-mono text-[10px] text-ghost/30">
-                    © 2025. ALL RIGHTS RESERVED.
+                    © 2025 Team NonceSense. ALL RIGHTS RESERVED.
                  </p>
                  <div className="flex items-center gap-2">
                     <div className="h-1.5 w-1.5 rounded-full bg-sentinel animate-pulse" />
