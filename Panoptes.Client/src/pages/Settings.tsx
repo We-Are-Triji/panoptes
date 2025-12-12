@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, ArrowLeft, CheckCircle2, XCircle, HelpCircle, Book, MessageSquare, Github } from 'lucide-react';
+import { Loader2, ArrowLeft, CheckCircle2, XCircle, HelpCircle, Github } from 'lucide-react';
 
 interface SetupStatus {
   isConfigured: boolean;
