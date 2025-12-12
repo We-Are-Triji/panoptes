@@ -20,10 +20,10 @@ export function UserDetails() {
         const prov = (user as any)?.signInDetails?.loginId ?? (user as any)?.signInDetails?.authFlowType ?? null;
         setProvider(prov);
         const session = await fetchAuthSession();
-        const idPayload = session.tokens?.idToken?.payload as any;
+        const idPayload = session.tokens?.idToken?.payload as Claims;
         setClaims({
           email: idPayload?.email,
-          name: idPayload?.name || idPayload?.given_name || idPayload?.preferred_username,
+          name: idPayload?.name || (idPayload as any)?.given_name || (idPayload as any)?.preferred_username,
           picture: idPayload?.picture,
           identities: idPayload?.identities,
         });
