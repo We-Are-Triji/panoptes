@@ -8,7 +8,7 @@ type Claims = {
   identities?: unknown;
 };
 
-export function UserDetails({ compact = false }: { compact?: boolean }) {
+export function UserDetails() {
   const [claims, setClaims] = useState<Claims | null>(null);
   const [provider, setProvider] = useState<string | null>(null);
 
