@@ -51,16 +51,6 @@ export function SideNav() {
             </span>
           )}
         </div>
-        {!isCollapsed && (
-          <button
-            onClick={toggleCollapse}
-            className="hidden lg:block p-1 rounded-tech hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sentinel focus-visible:ring-offset-2"
-            aria-label="Collapse navigation"
-            title="Collapse navigation"
-          >
-            <ChevronLeft className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
-          </button>
-        )}
       </div>
 
       {/* Primary Navigation */}
@@ -112,20 +102,6 @@ export function SideNav() {
 
       {/* Documentation Footer */}
       <SideNavFooter isCollapsed={isCollapsed} />
-
-      {/* Expand Button (when collapsed) */}
-      {isCollapsed && (
-        <div className="p-2 border-t border-border hidden lg:block">
-          <button
-            onClick={toggleCollapse}
-            className="w-full p-3 rounded-tech hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sentinel focus-visible:ring-offset-2"
-            aria-label="Expand navigation"
-            title="Expand navigation"
-          >
-            <ChevronRight className="w-5 h-5 text-muted-foreground mx-auto" aria-hidden="true" />
-          </button>
-        </div>
-      )}
     </>
   );
 
@@ -179,3 +155,4 @@ export function SideNav() {
     </>
   );
 }
+
