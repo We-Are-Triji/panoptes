@@ -1,18 +1,21 @@
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation} from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { createContext, useEffect, useState } from 'react';
 import { Toaster } from 'react-hot-toast';
 import Dashboard from './pages/Dashboard';
 import SubscriptionDetail from './pages/SubscriptionDetail';
 import Settings from './pages/Settings';
 import Health from './pages/Health';
+import Profile from './pages/Profile'; 
 import { DashboardLayout } from './layouts/DashboardLayout';
 import Landing from './pages/Landing';
-import { useAuth, AuthProvider } from './context/AuthContext'; // 1. Import AuthProvider
+import { useScrollbarTheme } from './hooks/useScrollbarTheme';
+import { useAuth, AuthProvider } from './context/AuthContext';
+import { CustomCursor } from './pages/landing/components/Cursor';
 
 export const ThemeContext = createContext<{
   isDark: boolean;
   setIsDark: (v: boolean) => void;
-}>({ isDark: false, setIsDark: () => {} });
+}>({ isDark: false, setIsDark: () => { } });
 
 // --- GUARDS ---
 
@@ -35,15 +38,15 @@ function RequireAuth({ children }: { children: JSX.Element }) {
 
 // 2. Guest Guard: Redirects logged-in users away from Landing
 function RedirectIfAuthenticated({ children }: { children: JSX.Element }) {
-    const { user, loading } = useAuth();
-    
-    if (loading) return null;
-    
-    if (user) {
-        return <Navigate to="/dashboard" replace />;
-    }
-    
-    return <>{children}</>;
+  const { user, loading } = useAuth();
+
+  if (loading) return null;
+
+  if (user) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <>{children}</>;
 }
 
 function App() {
@@ -52,68 +55,95 @@ function App() {
       const stored = localStorage.getItem('theme');
       if (stored === 'dark') return true;
       if (stored === 'light') return false;
-    } catch (e) {}
+    } catch (e) { }
     return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
   });
 
   useEffect(() => {
     const root = document.documentElement;
-    if (isDark) root.classList.add('dark');
-    else root.classList.remove('dark');
+    if (isDark) {
+      root.classList.add('dark');
+      root.classList.remove('light');
+    } else {
+      root.classList.remove('dark');
+      root.classList.add('light');
+    }
     try {
       localStorage.setItem('theme', isDark ? 'dark' : 'light');
-    } catch (e) {}
+    } catch (e) { }
   }, [isDark]);
+
+  // Apply scrollbar theme dynamically
+  useScrollbarTheme(isDark);
 
   return (
     <ThemeContext.Provider value={{ isDark, setIsDark }}>
-      {/* 2. WRAP EVERYTHING IN AUTHPROVIDER */}
       <AuthProvider>
+        {/* Customized Toaster for Cyberpunk Theme */}
         <Toaster
-          position="top-right"
+          position="bottom-right"
           toastOptions={{
-            style: { background: '#333', color: '#fff' },
+            className: 'font-mono text-sm', 
+            style: {
+              border: '1px solid rgba(255,255,255,0.1)',
+              padding: '12px 16px',
+              color: '#F0F0F0',
+              backgroundColor: '#050505', 
+              borderRadius: '2px', 
+            },
             success: {
-              style: { background: '#10b981', color: '#fff' },
-              iconTheme: { primary: '#fff', secondary: '#10b981' },
+              iconTheme: {
+                primary: '#00FF94', 
+                secondary: 'black',
+              },
+              style: {
+                border: '1px solid rgba(0, 255, 148, 0.2)',
+              },
             },
             error: {
-              style: { background: '#ef4444', color: '#fff' },
-              iconTheme: { primary: '#fff', secondary: '#ef4444' },
+              iconTheme: {
+                primary: '#EF4444', 
+                secondary: 'black',
+              },
+              style: {
+                border: '1px solid rgba(239, 68, 68, 0.2)', 
+                color: '#FFDDDD',
+              },
             },
           }}
         />
-        
+
+        <CustomCursor/>
+
         <Router>
           <Routes>
-            {/* PUBLIC ROUTE: Landing Page 
-                Wrapped in RedirectIfAuthenticated so logged-in users go straight to dashboard 
-            */}
-            <Route 
-                path="/" 
-                element={
-                    <RedirectIfAuthenticated>
-                        <Landing />
-                    </RedirectIfAuthenticated>
-                } 
+            {/* PUBLIC ROUTE: Landing Page */}
+            <Route
+              path="/"
+              element={
+                <RedirectIfAuthenticated>
+                  <Landing />
+                </RedirectIfAuthenticated>
+              }
             />
 
-            {/* PROTECTED ROUTES: Dashboard Area 
-                Moved to "/dashboard" to avoid conflict with Landing
-            */}
-            <Route 
-                path="/dashboard" 
-                element={
-                    <RequireAuth>
-                        <DashboardLayout />
-                    </RequireAuth>
-                }
+            {/* PROTECTED ROUTES: Dashboard Area */}
+            <Route
+              path="/dashboard"
+              element={
+                <RequireAuth>
+                  <DashboardLayout />
+                </RequireAuth>
+              }
             >
               <Route index element={<Dashboard />} />
-              <Route path="analytics" element={<Dashboard />} />
+              {/* Note: /dashboard/analytics points to Dashboard component as well */}
+              <Route path="analytics" element={<Dashboard />} /> 
               <Route path="health" element={<Health />} />
               <Route path="subscriptions/:id" element={<SubscriptionDetail />} />
               <Route path="settings" element={<Settings />} />
+              {/* Profile Page nested inside Dashboard */}
+              <Route path="profile" element={<Profile />} />
             </Route>
 
             {/* Fallback */}
