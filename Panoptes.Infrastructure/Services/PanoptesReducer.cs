@@ -127,7 +127,7 @@ namespace Panoptes.Infrastructure.Services
             // Fetch ALL subscriptions first, then filter based on actual rate limit status
             // Fetch active, non-deleted subscriptions
             var allSubscriptions = await _dbContext.WebhookSubscriptions
-                .Where(s => !s.IsCircuitBroken && !s.IsDeleted) // <--- FIX HERE
+                .Where(s => !s.IsActive && !s.IsDeleted) // <--- FIX HERE
                 .ToListAsync();
             
             // Check actual rate limit status from delivery logs for each subscription
@@ -369,7 +369,7 @@ namespace Panoptes.Infrastructure.Services
                             txHash, inputs, outputs, outputAddresses, policyIds, finalEventType, matchReason);
                         
                         // Skip disabled subscriptions (rate limited, circuit broken, or disabled during processing)
-                        if (sub.IsRateLimited || sub.IsCircuitBroken || _disabledDuringProcessing.Contains(sub.Id)) continue;
+                        if (sub.IsRateLimited || _disabledDuringProcessing.Contains(sub.Id)) continue;
                         
                         // Handle paused (inactive) subscriptions: record the event but don't dispatch
                         if (!sub.IsActive)
@@ -440,10 +440,10 @@ namespace Panoptes.Infrastructure.Services
         private async Task DispatchWebhook(WebhookSubscription sub, object payload)
         {
             // Skip if subscription is disabled (circuit broken, rate limited, inactive, or disabled during this processing cycle)
-            if (sub.IsCircuitBroken || sub.IsRateLimited || !sub.IsActive || _disabledDuringProcessing.Contains(sub.Id))
+            if ( sub.IsRateLimited || !sub.IsActive || _disabledDuringProcessing.Contains(sub.Id))
             {
                 _logger?.LogDebug("Skipping webhook dispatch for {Name} - subscription is disabled (CircuitBroken={CB}, RateLimited={RL}, Inactive={Inactive}, DisabledDuringProcessing={DDP})", 
-                    sub.Name, sub.IsCircuitBroken, sub.IsRateLimited, !sub.IsActive, _disabledDuringProcessing.Contains(sub.Id));
+                    sub.Name, sub.IsRateLimited, !sub.IsActive, _disabledDuringProcessing.Contains(sub.Id));
                 return;
             }
 
@@ -500,14 +500,6 @@ namespace Panoptes.Infrastructure.Services
                         _logger?.LogWarning("Webhook URL unreachable for {Name}, consecutive failures: {Count}", 
                             sub.Name, sub.ConsecutiveFailures);
                         
-                        // Quick circuit breaker: Auto-pause after 5 consecutive network failures
-                        if (sub.ConsecutiveFailures >= 5)
-                        {
-                            sub.IsActive = false;
-                            sub.IsCircuitBroken = true;
-                            sub.CircuitBrokenReason = $"Webhook URL is unreachable - failed {sub.ConsecutiveFailures} consecutive times with network/timeout errors. Last error: {log.ResponseBody}";
-                            _logger?.LogError("⚠️ CIRCUIT BREAKER: Auto-paused subscription {Name} - URL unreachable after {Count} attempts", sub.Name, sub.ConsecutiveFailures);
-                        }
                     }
                     else
                     {
@@ -518,9 +510,6 @@ namespace Panoptes.Infrastructure.Services
                         if (sub.ConsecutiveFailures >= 15)
                         {
                             sub.IsActive = false;
-                            sub.IsCircuitBroken = true;
-                            sub.CircuitBrokenReason = $"Webhook has failed {sub.ConsecutiveFailures} consecutive times. Last status: {log.ResponseStatusCode}";
-                            _logger?.LogError("⚠️ CIRCUIT BREAKER: Auto-paused subscription {Name} after {Count} consecutive failures", sub.Name, sub.ConsecutiveFailures);
                         }
                     }
                     
@@ -531,9 +520,6 @@ namespace Panoptes.Infrastructure.Services
                         if (failureDuration.TotalHours >= 12)
                         {
                             sub.IsActive = false;
-                            sub.IsCircuitBroken = true;
-                            sub.CircuitBrokenReason = $"Continuous failures for {failureDuration.TotalHours:F1}+ hours ({sub.ConsecutiveFailures} failures)";
-                            _logger?.LogError("⚠️ CIRCUIT BREAKER: Auto-paused subscription {Name} after {Hours:F1} hours of continuous failures", sub.Name, failureDuration.TotalHours);
                         }
                     }
                 }
