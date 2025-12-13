@@ -13,7 +13,7 @@ import {
   type ChartConfig,
 } from '@/components/ui/chart';
 import { TimeRange, isCustomTimeRange, BucketSize } from '../hooks/useStatsData';
-import { lazy, Suspense } from 'react';
+import { lazy } from 'react';
 const TimeRangeSelector = lazy(() => import('./TimeRangeSelector'));
 
 interface VolumeDataPoint {
