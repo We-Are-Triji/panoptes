@@ -3,7 +3,6 @@ import React, { useState, useEffect, useRef } from 'react';
 interface CreateSubscriptionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  // Updated signature to match the backend expectation
   onCreate: (data: { 
     name: string; 
     targetUrl: string; 
@@ -36,6 +35,7 @@ const CreateSubscriptionModal: React.FC<CreateSubscriptionModalProps> = ({
   const addressInputRef = useRef<HTMLInputElement>(null);
 
   // --- Validation State ---
+  const [touched, setTouched] = useState({ name: false, targetUrl: false }); 
   const [isValidatingUrl, setIsValidatingUrl] = useState(false);
   const [showValidationWarning, setShowValidationWarning] = useState(false);
   const [validationWarningMessage, setValidationWarningMessage] = useState('');
@@ -51,11 +51,11 @@ const CreateSubscriptionModal: React.FC<CreateSubscriptionModalProps> = ({
         setName('');
         setEventType('Transaction');
       }
-      // Always reset these
       setTargetUrl('');
       setMinAda('');
       setAddressInput('');
       setWalletAddresses([]);
+      setTouched({ name: false, targetUrl: false });
       setIsValidatingUrl(false);
       setShowValidationWarning(false);
       setShowFirehoseWarning(false);
@@ -63,8 +63,8 @@ const CreateSubscriptionModal: React.FC<CreateSubscriptionModalProps> = ({
   }, [isOpen, initialValues]);
 
   // --- Helpers ---
-
   const isValidUrl = (url: string): boolean => {
+    if (!url) return false;
     return url.startsWith('http://') || url.startsWith('https://');
   };
 
@@ -72,7 +72,6 @@ const CreateSubscriptionModal: React.FC<CreateSubscriptionModalProps> = ({
     const raw = addressInput.trim();
     if (!raw) return;
 
-    // Support pasting comma-separated lists
     const candidates = raw.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
     const newAddresses = candidates.filter(c => !walletAddresses.includes(c));
     
@@ -93,29 +92,47 @@ const CreateSubscriptionModal: React.FC<CreateSubscriptionModalProps> = ({
     }
   };
 
-  const isFormValid = name.trim().length > 0 && isValidUrl(targetUrl);
+  const handleBlur = (field: 'name' | 'targetUrl') => {
+    setTouched(prev => ({ ...prev, [field]: true }));
+  };
+
+  const isNameValid = name.trim().length > 0;
+  const isUrlValid = isValidUrl(targetUrl);
+  const isFormValid = isNameValid && isUrlValid;
 
   // --- Submission Logic ---
 
   const handlePreSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setTouched({ name: true, targetUrl: true });
+
     if (!isFormValid) return;
 
-    // Check for "Firehose" condition: No wallet filter & Transaction type
-    if (walletAddresses.length === 0 && eventType === 'Transaction') {
+    let effectiveAddresses = [...walletAddresses];
+    const pendingAddress = addressInput.trim();
+    
+    if (pendingAddress) {
+      const candidates = pendingAddress.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+      const newAddresses = candidates.filter(c => !walletAddresses.includes(c));
+      effectiveAddresses = [...effectiveAddresses, ...newAddresses];
+      setWalletAddresses(effectiveAddresses);
+      setAddressInput('');
+    }
+
+    if (effectiveAddresses.length === 0 && eventType === 'Transaction') {
       setShowFirehoseWarning(true);
     } else {
-      startUrlValidation();
+      startUrlValidation(effectiveAddresses);
     }
   };
 
-  const startUrlValidation = async () => {
+  const startUrlValidation = async (currentAddresses: string[]) => {
     setIsValidatingUrl(true);
-    setShowFirehoseWarning(false); // Close warning if it was open
+    setShowFirehoseWarning(false);
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
 
       const response = await fetch('/Subscriptions/validate-url', {
         method: 'POST',
@@ -134,9 +151,8 @@ const CreateSubscriptionModal: React.FC<CreateSubscriptionModalProps> = ({
         return;
       }
 
-      // Success
       setIsValidatingUrl(false);
-      executeCreate();
+      executeCreate(currentAddresses);
     } catch (err) {
       setIsValidatingUrl(false);
       const errorMessage = err instanceof Error && err.name === 'AbortError'
@@ -147,19 +163,20 @@ const CreateSubscriptionModal: React.FC<CreateSubscriptionModalProps> = ({
     }
   };
 
-  const executeCreate = () => {
-    // Convert ADA to Lovelace
+  const executeCreate = (overrideAddresses?: string[]) => {
     let lovelace: number | undefined = undefined;
     if (minAda && !isNaN(parseFloat(minAda))) {
        const val = parseFloat(minAda);
        if (val > 0) lovelace = Math.floor(val * 1_000_000);
     }
 
+    const finalAddresses = overrideAddresses || walletAddresses;
+
     onCreate({
       name: name.trim(),
       targetUrl: targetUrl.trim(),
       eventType,
-      walletAddresses: walletAddresses.length > 0 ? walletAddresses : undefined,
+      walletAddresses: finalAddresses.length > 0 ? finalAddresses : undefined,
       minimumLovelace: lovelace
     });
 
@@ -174,20 +191,19 @@ const CreateSubscriptionModal: React.FC<CreateSubscriptionModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
-      {/* Backdrop */}
       <div 
-        className="fixed inset-0 bg-gray-900/75 dark:bg-black/80 backdrop-blur-sm transition-opacity"
+        className="fixed inset-0 bg-gray-900/75 dark:bg-black/90 backdrop-blur-sm transition-opacity"
         onClick={handleClose}
       />
 
-      {/* Main Modal - Landscape Layout */}
       <div className="flex min-h-full items-center justify-center p-4">
-        <div className="relative w-full max-w-5xl bg-white dark:bg-gray-800 rounded-xl shadow-2xl overflow-hidden border border-gray-200 dark:border-gray-700 flex flex-col max-h-[90vh]">
+        {/* CHANGED: Dark mode background is now #09090b (Zinc 950) instead of gray-800 */}
+        <div className="relative w-full max-w-5xl bg-white dark:bg-[#09090b] rounded-xl shadow-2xl overflow-hidden border border-gray-200 dark:border-gray-800 flex flex-col max-h-[90vh]">
           
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-[#09090b]">
             <div>
-              <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">New Subscription</h3>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">New Subscription</h3>
               <p className="text-xs text-gray-500 dark:text-gray-400">Configure webhook trigger and filters</p>
             </div>
             <button onClick={handleClose} className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-200 transition-colors">
@@ -197,62 +213,73 @@ const CreateSubscriptionModal: React.FC<CreateSubscriptionModalProps> = ({
             </button>
           </div>
 
-          {/* Body - 2 Column Grid */}
+          {/* Body */}
           <div className="flex-1 overflow-y-auto p-6 md:p-8">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-full">
               
               {/* --- LEFT COLUMN: Settings --- */}
               <div className="space-y-6">
                 
-                {/* Name */}
+                {/* Name Input */}
                 <div className="space-y-1.5">
-                  <label htmlFor="name" className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                    Friendly Name <span className="text-red-500">*</span>
+                  {/* CHANGED: Label text is simpler and darker gray (400) so the RED asterisk pops */}
+                  <label htmlFor="name" className="block text-sm font-semibold text-gray-700 dark:text-gray-400">
+                    Friendly Name <span className="text-red-500 font-extrabold text-base ml-0.5">*</span>
                   </label>
                   <input
                     type="text"
                     id="name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
+                    onBlur={() => handleBlur('name')}
                     placeholder="e.g. Main Wallet Tracker"
-                    className="w-full h-10 px-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-green-500 focus:border-transparent transition-all placeholder:text-gray-400 text-sm"
+                    // CHANGED: Input background #121212 and border gray-700 for distinct "dark mode" look
+                    className={`w-full h-10 px-3 rounded-lg border bg-white dark:bg-[#121212] text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-green-500 focus:border-transparent transition-all placeholder:text-gray-400 text-sm ${
+                        touched.name && !isNameValid 
+                        ? 'border-red-500 focus:ring-red-500 bg-red-50 dark:bg-red-900/10' 
+                        : 'border-gray-300 dark:border-gray-700'
+                    }`}
                     autoFocus
                   />
+                   {touched.name && !isNameValid && (
+                    <p className="text-xs text-red-600 dark:text-red-400 font-medium">Friendly Name is required</p>
+                  )}
                 </div>
 
-                {/* Target URL */}
+                {/* Target URL Input */}
                 <div className="space-y-1.5">
-                  <label htmlFor="targetUrl" className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                    Webhook URL <span className="text-red-500">*</span>
+                  <label htmlFor="targetUrl" className="block text-sm font-semibold text-gray-700 dark:text-gray-400">
+                    Webhook URL <span className="text-red-500 font-extrabold text-base ml-0.5">*</span>
                   </label>
                   <input
                     type="text"
                     id="targetUrl"
                     value={targetUrl}
                     onChange={(e) => setTargetUrl(e.target.value)}
+                    onBlur={() => handleBlur('targetUrl')}
                     placeholder="https://api.mysite.com/webhook"
-                    className={`w-full h-10 px-3 rounded-lg border bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-green-500 focus:border-transparent transition-all placeholder:text-gray-400 text-sm font-mono ${
-                      targetUrl && !isValidUrl(targetUrl) 
-                        ? 'border-red-300 dark:border-red-700' 
-                        : 'border-gray-300 dark:border-gray-600'
+                    className={`w-full h-10 px-3 rounded-lg border bg-white dark:bg-[#121212] text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-green-500 focus:border-transparent transition-all placeholder:text-gray-400 text-sm font-mono ${
+                      (touched.targetUrl && !isUrlValid) || (targetUrl && !isValidUrl(targetUrl))
+                        ? 'border-red-500 focus:ring-red-500 bg-red-50 dark:bg-red-900/10' 
+                        : 'border-gray-300 dark:border-gray-700'
                     }`}
                   />
-                  {targetUrl && !isValidUrl(targetUrl) && (
-                    <p className="text-xs text-red-500 mt-1">URL must start with http:// or https://</p>
+                  {touched.targetUrl && !isUrlValid && (
+                    <p className="text-xs text-red-600 dark:text-red-400 font-medium mt-1">{!targetUrl ? 'Webhook URL is required' : 'URL must start with http:// or https://'}</p>
                   )}
                 </div>
 
                 {/* Type & ADA Row */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label htmlFor="eventType" className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                    <label htmlFor="eventType" className="block text-sm font-semibold text-gray-700 dark:text-gray-400">
                       Event Type
                     </label>
                     <select
                       id="eventType"
                       value={eventType}
                       onChange={(e) => setEventType(e.target.value)}
-                      className="w-full h-10 px-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-green-500 focus:border-transparent transition-all text-sm"
+                      className="w-full h-10 px-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#121212] text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-green-500 focus:border-transparent transition-all text-sm"
                     >
                       <option value="Transaction">Transaction</option>
                       <option value="NFT Mint">NFT Mint</option>
@@ -261,29 +288,36 @@ const CreateSubscriptionModal: React.FC<CreateSubscriptionModalProps> = ({
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center justify-between">
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-400 flex items-center justify-between">
                       Min ADA
                       <span className="text-[10px] text-gray-500 font-normal bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">Optional</span>
                     </label>
                     <div className="relative">
-                       <input
-                        type="number"
-                        min="0"
-                        step="0.1"
-                        placeholder="0"
-                        value={minAda}
-                        onChange={(e) => setMinAda(e.target.value)}
-                        className="w-full h-10 pl-3 pr-10 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-green-500 focus:border-transparent transition-all placeholder:text-gray-400 text-sm font-mono"
-                      />
-                      <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                        <span className="text-gray-500 dark:text-gray-400 text-xs font-bold">ADA</span>
-                      </div>
+                        <input
+                         type="number"
+                         min="0"
+                         step="0.1"
+                         placeholder="0"
+                         value={minAda}
+                         onChange={(e) => {
+                             const val = parseFloat(e.target.value);
+                             if (val < 0) return;
+                             setMinAda(e.target.value);
+                         }}
+                         className="w-full h-10 pl-3 pr-10 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#121212] text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-green-500 focus:border-transparent transition-all placeholder:text-gray-400 text-sm font-mono"
+                       />
+                       <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                         <span className="text-gray-500 dark:text-gray-500 text-xs font-bold">ADA</span>
+                       </div>
                     </div>
+                    <p className="text-[10px] text-gray-500 dark:text-gray-500 text-right">
+                        1 ADA = 1,000,000 Lovelace
+                    </p>
                   </div>
                 </div>
 
                 {/* Secret Key Info */}
-                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 flex items-start gap-3">
+                <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800/50 rounded-lg p-3 flex items-start gap-3">
                   <svg className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                   </svg>
@@ -294,12 +328,13 @@ const CreateSubscriptionModal: React.FC<CreateSubscriptionModalProps> = ({
               </div>
 
               {/* --- RIGHT COLUMN: Wallet Filters --- */}
-              <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900/50 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+              {/* CHANGED: Background to #121212 (slightly lighter than #09090b) to create depth */}
+              <div className="flex flex-col h-full bg-gray-50 dark:bg-[#121212] rounded-xl border border-gray-200 dark:border-gray-800 p-5">
                 <div className="flex justify-between items-center mb-3">
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-400">
                     Wallet Filters
                   </label>
-                  <span className="text-xs bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-2 py-1 rounded-full font-mono">
+                  <span className="text-xs bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-400 px-2 py-1 rounded-full font-mono">
                     {walletAddresses.length} added
                   </span>
                 </div>
@@ -313,12 +348,13 @@ const CreateSubscriptionModal: React.FC<CreateSubscriptionModalProps> = ({
                     value={addressInput}
                     onChange={(e) => setAddressInput(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    className="flex-1 h-10 px-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-green-500 focus:border-transparent text-sm font-mono placeholder:text-gray-400"
+                    className="flex-1 h-10 px-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#09090b] text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-green-500 focus:border-transparent text-sm font-mono placeholder:text-gray-400"
                   />
                   <button
                     onClick={handleAddAddress}
                     type="button"
-                    className="h-10 px-4 bg-gray-900 dark:bg-gray-700 hover:bg-black dark:hover:bg-gray-600 text-white rounded-lg transition-colors flex items-center justify-center"
+                    // CHANGED: Primary CTA color for Add Button (Green/Indigo)
+                    className="h-10 px-4 bg-indigo-600 hover:bg-indigo-700 dark:bg-green-600 dark:hover:bg-green-500 text-white rounded-lg transition-colors flex items-center justify-center shadow-sm"
                     title="Add Address"
                   >
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -328,20 +364,20 @@ const CreateSubscriptionModal: React.FC<CreateSubscriptionModalProps> = ({
                 </div>
 
                 {/* List Area */}
-                <div className="flex-1 overflow-y-auto min-h-[200px] bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-2 space-y-2 shadow-inner custom-scrollbar">
+                <div className="flex-1 overflow-y-auto min-h-[200px] bg-white dark:bg-[#09090b] rounded-lg border border-gray-200 dark:border-gray-800 p-2 space-y-2 shadow-inner custom-scrollbar">
                   {walletAddresses.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-gray-500 p-4 text-center border-2 border-dashed border-gray-100 dark:border-gray-700 rounded m-2">
+                    <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-gray-600 p-4 text-center border-2 border-dashed border-gray-100 dark:border-gray-800 rounded m-2">
                       <svg className="w-8 h-8 mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                       </svg>
                       <span className="text-sm font-medium">No filters added</span>
                       <span className="text-xs mt-1">
-                        Listening to <strong className="text-indigo-600 dark:text-green-400">ALL</strong> {eventType}s
+                        Listening to <strong className="text-indigo-600 dark:text-green-500">ALL</strong> {eventType}s
                       </span>
                     </div>
                   ) : (
                     walletAddresses.map((addr, idx) => (
-                      <div key={idx} className="group flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-900 rounded border border-gray-100 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-500 transition-colors">
+                      <div key={idx} className="group flex items-center justify-between p-2 bg-gray-50 dark:bg-[#121212] rounded border border-gray-100 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-600 transition-colors">
                         <div className="flex items-center gap-2 overflow-hidden">
                           <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 dark:bg-green-500 flex-shrink-0"></div>
                           <span className="text-xs font-mono text-gray-600 dark:text-gray-300 truncate" title={addr}>
@@ -366,7 +402,7 @@ const CreateSubscriptionModal: React.FC<CreateSubscriptionModalProps> = ({
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-end gap-3 px-6 py-4 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-end gap-3 px-6 py-4 bg-gray-50 dark:bg-[#09090b] border-t border-gray-200 dark:border-gray-800">
             <button
               onClick={handleClose}
               disabled={isValidatingUrl}
@@ -376,11 +412,11 @@ const CreateSubscriptionModal: React.FC<CreateSubscriptionModalProps> = ({
             </button>
             <button
               onClick={handlePreSubmit}
-              disabled={isValidatingUrl || !isFormValid}
+              disabled={isValidatingUrl} 
               className={`
                 px-6 py-2 text-sm font-bold text-white rounded-lg shadow-sm
                 transition-all transform active:scale-95
-                ${isValidatingUrl || !isFormValid
+                ${isValidatingUrl
                   ? 'bg-indigo-300 dark:bg-green-800 cursor-not-allowed' 
                   : 'bg-indigo-600 hover:bg-indigo-700 dark:bg-green-600 dark:hover:bg-green-500 shadow-indigo-200 dark:shadow-green-900/20'}
               `}
@@ -397,12 +433,11 @@ const CreateSubscriptionModal: React.FC<CreateSubscriptionModalProps> = ({
             </button>
           </div>
 
-          {/* --- MODAL OVERLAYS --- */}
-
-          {/* 1. Firehose Warning */}
+          {/* ... Overlays ... */}
           {showFirehoseWarning && (
              <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/80 dark:bg-black/90 backdrop-blur-sm p-6 animate-in fade-in duration-200">
-                <div className="bg-white dark:bg-gray-900 border-2 border-yellow-400 dark:border-yellow-600 rounded-xl max-w-md w-full p-6 shadow-2xl">
+                <div className="bg-white dark:bg-[#121212] border-2 border-yellow-400 dark:border-yellow-600 rounded-xl max-w-md w-full p-6 shadow-2xl">
+                    {/* Content same as before but ensure text colors match dark theme (gray-300 etc) */}
                     <div className="flex items-center gap-4 mb-4">
                         <div className="p-3 bg-yellow-100 dark:bg-yellow-900/30 rounded-full text-yellow-600 dark:text-yellow-500">
                              <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -429,7 +464,7 @@ const CreateSubscriptionModal: React.FC<CreateSubscriptionModalProps> = ({
                             Back to Edits
                         </button>
                         <button 
-                            onClick={startUrlValidation}
+                            onClick={() => startUrlValidation(walletAddresses)}
                             className="px-4 py-2 text-sm font-bold text-white bg-yellow-600 hover:bg-yellow-500 rounded-lg shadow-lg transition-colors"
                         >
                             Yes, Proceed
@@ -439,10 +474,9 @@ const CreateSubscriptionModal: React.FC<CreateSubscriptionModalProps> = ({
              </div>
           )}
 
-          {/* 2. Validation Warning (URL Unreachable) */}
           {showValidationWarning && (
             <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/80 dark:bg-black/90 backdrop-blur-sm p-6 animate-in fade-in duration-200">
-                <div className="bg-white dark:bg-gray-900 border-2 border-red-400 dark:border-red-600 rounded-xl max-w-md w-full p-6 shadow-2xl">
+                <div className="bg-white dark:bg-[#121212] border-2 border-red-400 dark:border-red-600 rounded-xl max-w-md w-full p-6 shadow-2xl">
                     <div className="flex items-center gap-4 mb-4">
                         <div className="p-3 bg-red-100 dark:bg-red-900/30 rounded-full text-red-600 dark:text-red-500">
                              <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -469,7 +503,7 @@ const CreateSubscriptionModal: React.FC<CreateSubscriptionModalProps> = ({
                             Fix URL
                         </button>
                         <button 
-                            onClick={executeCreate}
+                            onClick={() => executeCreate()}
                             className="px-4 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-500 rounded-lg shadow-lg transition-colors"
                         >
                             Create Anyway

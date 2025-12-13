@@ -12,7 +12,7 @@ using Panoptes.Infrastructure.Persistence;
 namespace Panoptes.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20251212063825_AddSoftDelete")]
+    [Migration("20251212160009_AddSoftDelete")]
     partial class AddSoftDelete
     {
         /// <inheritdoc />
@@ -20,7 +20,7 @@ namespace Panoptes.Infrastructure.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.1")
+                .HasAnnotation("ProductVersion", "9.0.4")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
