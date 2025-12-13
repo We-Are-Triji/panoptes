@@ -429,7 +429,8 @@ namespace Panoptes.Infrastructure.Services
                             await DispatchWebhook(sub, payload);
                         }
                         // Force Real-Time (Catch-up Disabled)
-                        if (await CheckRateLimitAsync(sub)) await DispatchWebhook(sub, payload);
+                        var rlCheck = await CheckRateLimitAsync(sub);
+                        if (rlCheck.Allowed) await DispatchWebhook(sub, payload);
                     }
                 }
             }
