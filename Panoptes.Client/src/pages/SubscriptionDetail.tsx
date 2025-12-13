@@ -1,24 +1,24 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
-    ArrowLeft, 
-    Copy, 
-    Check, 
-    Play, 
-    Pause, 
-    Edit2, 
-    Trash2, 
-    Zap, 
-    Eye, 
-    EyeOff,
-    AlertTriangle,
-    Download,
-    Settings,
-    ChevronDown,
-    ChevronUp,
-    Activity,
-    Server,
-    Clock
+  ArrowLeft, 
+  Copy, 
+  Check, 
+  Play, 
+  Pause, 
+  Edit2, 
+  Trash2, 
+  Zap, 
+  Eye, 
+  EyeOff,
+  Download,
+  Settings,
+  ChevronDown,
+  ChevronUp,
+  Activity,
+  Server,
+  Clock,
+  Terminal
 } from 'lucide-react';
 
 import {
@@ -26,8 +26,8 @@ import {
   getSubscriptionLogs,
   updateSubscription,
   deleteSubscription,
-  resetSubscription,
-  toggleSubscriptionActive
+  toggleSubscriptionActive,
+  resetSubscription
 } from '../services/api';
 
 import { WebhookSubscription, DeliveryLog } from '../types';
@@ -64,6 +64,30 @@ const StatsCard = ({ label, value, icon: Icon, alertColor }: { label: string, va
     </p>
   </div>
 );
+
+const TestWebhookModal = ({ isOpen, onClose, children }: { isOpen: boolean; onClose: () => void; children: React.ReactNode }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto">
+      <div className="fixed inset-0 bg-gray-900/75 dark:bg-black/80 backdrop-blur-sm transition-opacity" onClick={onClose} />
+      <div className="flex min-h-full items-center justify-center p-4">
+        <div className="relative w-full max-w-4xl bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="flex justify-between items-center px-6 py-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+              <Terminal className="w-5 h-5" /> Webhook Tester
+            </h3>
+            <button onClick={onClose} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
+          <div className="p-0">
+            {children}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription: propSubscription, onBack }) => {
   const { id: paramId } = useParams<{ id: string }>();
@@ -102,9 +126,7 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription: p
 
   const handleDeliverLatestOnlyChange = (value: boolean) => {
     setDeliverLatestOnly(value);
-    if (activeId) {
-      localStorage.setItem(`deliverLatestOnly_${activeId}`, String(value));
-    }
+    if (activeId) localStorage.setItem(`deliverLatestOnly_${activeId}`, String(value));
   };
 
   // --- API CALLS ---
@@ -120,8 +142,7 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription: p
       setError(null);
     } catch (error: any) {
       console.error("Error fetching subscription:", error);
-      const errorMsg = error.response?.data || error.message || "Failed to fetch subscription details.";
-      setError(`API Error: ${errorMsg}`);
+      setError(`API Error: ${error.response?.data || error.message}`);
     }
   };
 
@@ -135,7 +156,6 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription: p
     } catch (error: any) {
       console.error("Error fetching logs:", error);
       setLogs([]);
-      setTotalLogs(0);
     }
   };
 
@@ -155,15 +175,12 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription: p
       const filename = generateFilename(subscription.name, format);
 
       if (format === 'json') {
-        const jsonContent = JSON.stringify(logsToExport, null, 2);
-        downloadFile(jsonContent, filename, 'application/json');
+        downloadFile(JSON.stringify(logsToExport, null, 2), filename, 'application/json');
       } else {
-        const csvContent = convertToCSV(logsToExport);
-        downloadFile(csvContent, filename, 'text/csv');
+        downloadFile(convertToCSV(logsToExport), filename, 'text/csv');
       }
     } catch (err) {
-      console.error("Export failed", err);
-      alert("Failed to export logs. Please try again.");
+      alert("Failed to export logs.");
     }
   };
 
@@ -176,20 +193,23 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription: p
       setLoading(true);
       fetchSubscription().then(() => setLoading(false));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId, propSubscription]);
 
   useEffect(() => {
     fetchLogs();
     const logsInterval = setInterval(fetchLogs, 3000);
     return () => clearInterval(logsInterval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId, currentPage]);
 
   useEffect(() => {
     const subInterval = setInterval(() => fetchSubscription(true), 3000);
     return () => clearInterval(subInterval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId]);
 
-  // --- ACTIONS ---
+  // --- HANDLERS ---
   const handleBack = () => {
     if (onBack) onBack();
     else navigate('/');
@@ -226,7 +246,6 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription: p
       await fetchSubscription(true);
       setError(null);
     } catch (err: any) {
-      console.error("Error toggling subscription:", err);
       setError(`Toggle Failed: ${err.message}`);
     }
   };
@@ -257,7 +276,7 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription: p
 
   // --- DERIVED METRICS ---
   const usageLastMinute = logs.filter(l => {
-    const logTime = new Date(l.timestamp || (l as any).createdAt).getTime();
+    const logTime = new Date(l.attemptedAt).getTime();
     return logTime > Date.now() - 60000;
   }).length;
 
@@ -452,6 +471,7 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription: p
               <span>{subscription.maxWebhooksPerHour} <span className="text-zinc-400 text-[10px]">/ hour</span></span>
             </div>
           </div>
+
         </div>
       </div>
 
@@ -473,6 +493,7 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription: p
           />
         </div>
       )}
+      <TestWebhookModal isOpen={false} onClose={() => {}} children={null}/>
 
       {/* 3. STATS ROW */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
