@@ -26,8 +26,8 @@ import {
   getSubscriptionLogs,
   updateSubscription,
   deleteSubscription,
-  toggleSubscriptionActive,
-  resetSubscription
+  toggleSubscriptionActive
+  // !! unused; resetSubscription
 } from '../services/api';
 
 import { WebhookSubscription, DeliveryLog } from '../types';
@@ -250,18 +250,19 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription: p
     }
   };
 
-  const handleReset = async () => {
-    if (!activeId) return;
-    try {
-      await resetSubscription(activeId);
-      await fetchSubscription(true);
-      setError(null);
-    } catch (error: any) {
-      console.error("Error resetting subscription:", error);
-      const errorMsg = error.response?.data || error.message || "Failed to reset subscription.";
-      setError(`Reset Failed: ${errorMsg}`);
-    }
-  };
+  // !! Not used
+  // const handleReset = async () => {
+  //   if (!activeId) return;
+  //   try {
+  //     await resetSubscription(activeId);
+  //     await fetchSubscription(true);
+  //     setError(null);
+  //   } catch (error: any) {
+  //     console.error("Error resetting subscription:", error);
+  //     const errorMsg = error.response?.data || error.message || "Failed to reset subscription.";
+  //     setError(`Reset Failed: ${errorMsg}`);
+  //   }
+  // };
 
   const handleCopyUrl = () => {
     if (!subscription) return;

@@ -8,8 +8,6 @@ import {
   Clock, 
   Zap, 
   AlertCircle, 
-  CheckCircle2, 
-  XCircle, 
   Cpu, 
   Loader2 
 } from 'lucide-react';

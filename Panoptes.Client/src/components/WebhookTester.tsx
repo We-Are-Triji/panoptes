@@ -8,7 +8,6 @@ import {
   Loader2, 
   CheckCircle, 
   XCircle, 
-  AlertTriangle 
 } from 'lucide-react';
 import { triggerDirectWebhookTest } from '../services/api';
 
