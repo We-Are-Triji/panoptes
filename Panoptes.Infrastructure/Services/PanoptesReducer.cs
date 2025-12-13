@@ -775,7 +775,7 @@ namespace Panoptes.Infrastructure.Services
                     RetryCount = 0,
                     MaxRetries = 3,
                     NextRetryAt = rl.RetryInSeconds.HasValue ? DateTime.UtcNow.AddSeconds(rl.RetryInSeconds.Value) : DateTime.UtcNow.AddSeconds(60),
-                    IsRateLimitRetry = false
+                    IsRateLimitRetry = true
                 };
 
                 _dbContext.DeliveryLogs.Add(log);
