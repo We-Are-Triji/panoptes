@@ -264,6 +264,14 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription: p
     return <span className="inline-flex items-center px-1.5 py-0.5 rounded-sm text-[10px] font-mono font-bold bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800">{statusCode} ERR</span>;
   };
 
+  const getPayload = (log: any) => {
+    return log.payloadJson || log.PayloadJson || log.requestPayload || log.RequestPayload || '{}';
+  };
+
+  const getResponse = (log: any) => {
+    return log.responseBody || log.ResponseBody || '(No content)';
+  };
+
   const formatJson = (data: string | object) => {
     try {
       if (typeof data === 'string') return JSON.stringify(JSON.parse(data), null, 2);
@@ -542,28 +550,44 @@ const SubscriptionDetail: React.FC<SubscriptionDetailProps> = ({ subscription: p
                                 </div>
 
                                 {isExpanded && (
-                                    <div className="px-6 py-4 border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 animate-in slide-in-from-top-1">
-                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                            <div>
-                                                <h4 className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-wider mb-2">Request Payload</h4>
-                                                <div className="bg-zinc-50 dark:bg-zinc-900 rounded-sm border border-zinc-200 dark:border-zinc-800 p-3 overflow-x-auto max-h-60 custom-scrollbar max-w-[calc(100vw-4rem)]">
-                                                    <pre className="text-xs font-mono text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap break-all">
-                                                        {(log as any).requestPayload ? formatJson((log as any).requestPayload) : "null"}
-                                                    </pre>
-                                                </div>
+                                <div className="px-6 py-4 border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 animate-in slide-in-from-top-1">
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                        {/* Payload Section */}
+                                        <div>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <h4 className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-wider">Payload</h4>
+                                                <button 
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        navigator.clipboard.writeText(formatJson(getPayload(log)));
+                                                    }}
+                                                    className="text-[10px] font-mono font-bold text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 uppercase tracking-wider"
+                                                >
+                                                    Copy
+                                                </button>
                                             </div>
-                                            <div>
-                                                <h4 className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-wider mb-2">Server Response</h4>
-                                                <div className="bg-zinc-50 dark:bg-zinc-900 rounded-sm border border-zinc-200 dark:border-zinc-800 p-3 overflow-x-auto max-h-60 custom-scrollbar max-w-[calc(100vw-4rem)]">
-                                                    <pre className="text-xs font-mono text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap break-all">
-                                                        {(log as any).responseBody ? formatJson((log as any).responseBody) : "null"}
-                                                    </pre>
-                                                </div>
+                                            <div className="bg-zinc-50 dark:bg-zinc-900 rounded-sm border border-zinc-200 dark:border-zinc-800 p-3 overflow-x-auto max-h-60 custom-scrollbar max-w-[calc(100vw-4rem)]">
+                                                <pre className="text-xs font-mono text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap break-all">
+                                                    {/* USES HELPER FUNCTION */}
+                                                    {formatJson(getPayload(log))}
+                                                </pre>
+                                            </div>
+                                        </div>
+
+                                        {/* Response Section */}
+                                        <div>
+                                            <h4 className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-wider mb-2">Server Response</h4>
+                                            <div className="bg-zinc-50 dark:bg-zinc-900 rounded-sm border border-zinc-200 dark:border-zinc-800 p-3 overflow-x-auto max-h-60 custom-scrollbar max-w-[calc(100vw-4rem)]">
+                                                <pre className="text-xs font-mono text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap break-all">
+                                                    {/* USES HELPER FUNCTION */}
+                                                    {formatJson(getResponse(log))}
+                                                </pre>
                                             </div>
                                         </div>
                                     </div>
-                                )}
-                            </div>
+                                </div>
+                            )}
+                          </div>
                         );
                     })}
                 </div>
