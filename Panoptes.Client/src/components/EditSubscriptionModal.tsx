@@ -3,7 +3,8 @@ import { WebhookSubscription } from '../types';
 import { EventTypeSelector } from './subscription/EventTypeSelector';
 import { WalletAddressInput } from './subscription/WalletAddressInput';
 import toast from 'react-hot-toast';
-import { Plus, Trash2 } from 'lucide-react';
+// ADDED: Info icon
+import { Plus, Trash2, Info } from 'lucide-react';
 
 interface EditSubscriptionModalProps {
     isOpen: boolean;
@@ -12,8 +13,16 @@ interface EditSubscriptionModalProps {
     onSave: (data: Partial<WebhookSubscription>) => void;
 }
 
-// ✅ FIXED: Type definition placed correctly
 type HeaderPair = { id: string; key: string; value: string };
+
+// ADDED: Default Headers Constant
+const DEFAULT_HEADERS = [
+  { key: 'Content-Type', value: 'application/json' },
+  { key: 'User-Agent', value: 'Panoptes-Webhook/1.0' },
+  { key: 'X-Panoptes-Signature', value: '<hmac-sha256>' },
+  { key: 'X-Panoptes-Event', value: '<event-type>' },
+  { key: 'X-Panoptes-Delivery', value: '<uuid>' },
+];
 
 const EditSubscriptionModal: React.FC<EditSubscriptionModalProps> = ({
     isOpen,
@@ -29,8 +38,10 @@ const EditSubscriptionModal: React.FC<EditSubscriptionModalProps> = ({
     const [minAda, setMinAda] = useState('');
     const [filterTargets, setFilterTargets] = useState<string[]>([]);
     
-    // ✅ NEW: Headers State
+    // Headers State
     const [headers, setHeaders] = useState<HeaderPair[]>([]);
+    // ADDED: UI Toggle State
+    const [showDefaultHeaders, setShowDefaultHeaders] = useState(false);
 
     // --- Validation State ---
     const [isValidatingUrl, setIsValidatingUrl] = useState(false);
@@ -44,6 +55,7 @@ const EditSubscriptionModal: React.FC<EditSubscriptionModalProps> = ({
             setTargetUrl(subscription.targetUrl);
             setEventType(subscription.eventType);
             setIsActive(subscription.isActive);
+            setShowDefaultHeaders(false); // Reset toggle
             
             // Consolidate filters
             let initialFilters = [...(subscription.walletAddresses || [])];
@@ -59,7 +71,7 @@ const EditSubscriptionModal: React.FC<EditSubscriptionModalProps> = ({
                 setMinAda('');
             }
 
-            // ✅ NEW: Parse Headers
+            // Parse Headers
             if (subscription.customHeaders) {
                 try {
                     const parsed = JSON.parse(subscription.customHeaders);
@@ -80,12 +92,9 @@ const EditSubscriptionModal: React.FC<EditSubscriptionModalProps> = ({
     }, [subscription]);
 
     // --- Helpers ---
-    // ✅ NEW: Header Helpers
     const addHeader = () => setHeaders([...headers, { id: crypto.randomUUID(), key: '', value: '' }]);
-    
     const updateHeader = (id: string, field: 'key' | 'value', val: string) => 
         setHeaders(headers.map(h => h.id === id ? { ...h, [field]: val } : h));
-    
     const removeHeader = (id: string) => setHeaders(headers.filter(h => h.id !== id));
 
     const getFilterConfig = (type: string) => {
@@ -115,7 +124,6 @@ const EditSubscriptionModal: React.FC<EditSubscriptionModalProps> = ({
             return;
         }
 
-        // Only validate URL if it changed
         if (targetUrl !== subscription.targetUrl) {
             setIsValidatingUrl(true);
             try {
@@ -157,13 +165,11 @@ const EditSubscriptionModal: React.FC<EditSubscriptionModalProps> = ({
             if (val > 0) lovelace = Math.floor(val * 1_000_000);
         }
 
-        // ✅ NEW: Serialize Headers for Backend
         const customHeadersObj: Record<string, string> = {};
         headers.forEach(h => {
             if (h.key.trim()) customHeadersObj[h.key.trim()] = h.value.trim();
         });
         
-        // Convert Object -> JSON String
         const serializedHeaders = Object.keys(customHeadersObj).length > 0 
             ? JSON.stringify(customHeadersObj) 
             : undefined;
@@ -178,7 +184,7 @@ const EditSubscriptionModal: React.FC<EditSubscriptionModalProps> = ({
             minimumLovelace: lovelace,
             targetAddress: null,
             policyId: null,
-            customHeaders: serializedHeaders // ✅ Pass as string
+            customHeaders: serializedHeaders
         });
 
         setShowValidationWarning(false);
@@ -207,7 +213,6 @@ const EditSubscriptionModal: React.FC<EditSubscriptionModalProps> = ({
                             
                             {/* TOP SECTION: GRID */}
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                                
                                 {/* LEFT: Core Config */}
                                 <div className="space-y-6">
                                     <div className="space-y-1.5">
@@ -249,8 +254,40 @@ const EditSubscriptionModal: React.FC<EditSubscriptionModalProps> = ({
                                 </div>
                             </div>
 
-                            {/* BOTTOM SECTION: CUSTOM HEADERS (NEW) */}
+                            {/* BOTTOM SECTION: HEADERS */}
                             <div className="border-t border-gray-200 dark:border-gray-800 pt-8">
+                                
+                                {/* ADDED: Default Headers Toggle */}
+                                <div className="bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden mb-6">
+                                    <button 
+                                        onClick={() => setShowDefaultHeaders(!showDefaultHeaders)}
+                                        className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-100 dark:hover:bg-gray-800/50 transition-colors"
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <Info className="w-4 h-4 text-gray-500" />
+                                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Default Headers</span>
+                                            <span className="text-xs text-gray-500 font-normal">(Included automatically)</span>
+                                        </div>
+                                        <span className="text-xs text-indigo-600 dark:text-green-500 font-medium">
+                                            {showDefaultHeaders ? 'Hide' : 'View'}
+                                        </span>
+                                    </button>
+                                    
+                                    {showDefaultHeaders && (
+                                        <div className="px-4 pb-4 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-black">
+                                            <div className="mt-3 grid gap-2">
+                                                {DEFAULT_HEADERS.map((h, i) => (
+                                                    <div key={i} className="flex items-center gap-3 text-xs font-mono">
+                                                        <span className="w-40 text-gray-500 dark:text-gray-400 text-right">{h.key}:</span>
+                                                        <span className="text-gray-800 dark:text-gray-200 bg-gray-100 dark:bg-gray-900 px-2 py-0.5 rounded">{h.value}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Custom Headers UI */}
                                 <div className="flex items-center justify-between mb-4">
                                     <div>
                                         <h4 className="text-sm font-bold text-gray-900 dark:text-white">Custom Headers</h4>
