@@ -16,8 +16,6 @@ namespace Panoptes.Infrastructure.Providers;
 
 /// <summary>
 /// Custom U5C Provider that handles UtxoRPC block format correctly.
-/// The standard Argus.Sync U5CProvider expects N2C format (Tag 24 wrapped),
-/// but UtxoRPC returns raw era-array format.
 /// </summary>
 public class PanoptesU5CProvider : ICardanoChainProvider
 {
@@ -32,14 +30,33 @@ public class PanoptesU5CProvider : ICardanoChainProvider
 
     /// <summary>
     /// Fetches a recent valid block from Koios API to use as intersection point.
-    /// Koios provides free REST API access to Cardano chain data.
+    /// DYNAMICALLY selects the correct Koios network based on the gRPC URL.
     /// </summary>
     public async Task<Point> GetTipAsync(ulong networkMagic = 2, CancellationToken? stoppingToken = null)
     {
         try
         {
-            // Use Koios API to get recent tip
-            var koiosUrl = "https://preprod.koios.rest/api/v1/tip";
+            // ---------------------------------------------------------
+            // 1. DYNAMIC NETWORK DETECTION
+            // ---------------------------------------------------------
+            // We infer the target network from the Demeter URL string.
+            // Demeter URLs format: "cardano-mainnet.utxorpc..." or "cardano-preprod.utxorpc..."
+            
+            string koiosUrl;
+
+            if (_url.Contains("mainnet", StringComparison.OrdinalIgnoreCase))
+            {
+                koiosUrl = "https://api.koios.rest/api/v1/tip";
+            }
+            else if (_url.Contains("preview", StringComparison.OrdinalIgnoreCase))
+            {
+                koiosUrl = "https://preview.koios.rest/api/v1/tip";
+            }
+            else
+            {
+                // Default to Preprod for safety (or if explicit 'preprod' is found)
+                koiosUrl = "https://preprod.koios.rest/api/v1/tip";
+            }
             
             using var httpClient = new HttpClient();
             httpClient.Timeout = TimeSpan.FromSeconds(10);
@@ -49,7 +66,6 @@ public class PanoptesU5CProvider : ICardanoChainProvider
             
             var json = await response.Content.ReadAsStringAsync();
             
-            // Parse JSON response - Koios returns: [{"hash":"...", "epoch_no":123, "abs_slot":12345678, "epoch_slot":123456, "block_no":9876543, "block_time":1234567890}]
             using var doc = System.Text.Json.JsonDocument.Parse(json);
             var tipArray = doc.RootElement;
             
@@ -121,7 +137,6 @@ public class PanoptesU5CProvider : ICardanoChainProvider
                     break;
 
                 case Utxorpc.Sdk.Models.Enums.NextResponseAction.Reset:
-                    // Create a minimal block for reset (rollback to specific point)
                     var resetBlock = CreateResetBlock(response.ResetRef!.Index);
                     yield return new NextResponse(
                         NextResponseAction.RollBack,
@@ -133,12 +148,6 @@ public class PanoptesU5CProvider : ICardanoChainProvider
         }
     }
 
-    /// <summary>
-    /// Deserialize block from UtxoRPC format.
-    /// UtxoRPC can return blocks in different formats:
-    /// 1. Raw era-array: [era_id, block_cbor]
-    /// 2. N2C format: Tag(24, ByteString([era_id, block_cbor]))
-    /// </summary>
     private Block? DeserializeBlock(ReadOnlyMemory<byte> blockCbor)
     {
         try
@@ -146,27 +155,22 @@ public class PanoptesU5CProvider : ICardanoChainProvider
             var reader = new CborReader(blockCbor, CborConformanceMode.Lax);
             var initialState = reader.PeekState();
 
-            // Check if it starts with a tag (N2C format) or array (raw format)
             if (initialState == CborReaderState.Tag)
             {
-                // N2C format: Tag(24, ByteString([era, block]))
                 return DeserializeN2CFormat(blockCbor);
             }
             else if (initialState == CborReaderState.StartArray)
             {
-                // Raw era-array format: [era, block]
                 return DeserializeRawFormat(blockCbor);
             }
             else
             {
-                // Try to deserialize as raw Conway block
                 return ConwayBlock.Read(blockCbor);
             }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[PanoptesU5CProvider] Error deserializing block: {ex.Message}");
-            Console.WriteLine($"[PanoptesU5CProvider] First 20 bytes: {Convert.ToHexString(blockCbor.Span[..Math.Min(20, blockCbor.Length)])}");
             return null;
         }
     }
@@ -174,15 +178,7 @@ public class PanoptesU5CProvider : ICardanoChainProvider
     private Block? DeserializeN2CFormat(ReadOnlyMemory<byte> blockCbor)
     {
         var reader = new CborReader(blockCbor, CborConformanceMode.Lax);
-        
-        // Read tag 24
         var tag = reader.ReadTag();
-        if (tag != CborTag.EncodedCborDataItem)
-        {
-            throw new InvalidOperationException($"Expected CBOR tag 24, got {tag}");
-        }
-
-        // Read the byte string containing [era, block]
         var innerBytes = reader.ReadByteString();
         return DeserializeRawFormat(innerBytes);
     }
@@ -190,18 +186,14 @@ public class PanoptesU5CProvider : ICardanoChainProvider
     private Block? DeserializeRawFormat(ReadOnlyMemory<byte> blockCbor)
     {
         var reader = new CborReader(blockCbor, CborConformanceMode.Lax);
-        
         reader.ReadStartArray();
         var era = reader.ReadInt32();
         var blockBytes = reader.ReadEncodedValue(true);
 
         return era switch
         {
-            // Shelley, Allegra, Mary, Alonzo
             2 or 3 or 4 or 5 => AlonzoCompatibleBlock.Read(blockBytes),
-            // Babbage
             6 => BabbageBlock.Read(blockBytes),
-            // Conway
             7 => ConwayBlock.Read(blockBytes),
             _ => throw new NotSupportedException($"Unsupported era: {era}")
         };
