@@ -20,7 +20,6 @@ import toast from 'react-hot-toast';
 import { SetupWizard } from '@/components/SetupWizard';
 import { ConfigureNetworkModal } from '@/components/ConfigureNetworkModal';
 
-// --- Types ---
 interface SetupStatus {
   isConfigured: boolean;
   activeNetwork?: string;
@@ -44,23 +43,18 @@ export default function Settings() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   
-  // System State
   const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Modal State
   const [editingNetworkId, setEditingNetworkId] = useState<string | null>(null);
   const [isSwitching, setIsSwitching] = useState<string | null>(null);
   
-  // Wizard State
   const [showWizard, setShowWizard] = useState(false);
 
-  // --- LOGGING MOUNT ---
   useEffect(() => {
     console.log("[Settings Page] Mounted.");
   }, []);
 
-  // --- WIZARD TRIGGER ---
   useEffect(() => {
     const shouldSetup = searchParams.get('setup');
     if (shouldSetup === 'true') {
@@ -78,7 +72,8 @@ export default function Settings() {
 
   const fetchSetupStatus = async () => {
     try {
-      const response = await fetch('/setup/status');
+      // Add timestamp to prevent caching
+      const response = await fetch(`/setup/status?_t=${Date.now()}`);
       const data = await response.json();
       setSetupStatus(data);
     } catch (err) {
@@ -90,11 +85,14 @@ export default function Settings() {
 
   const handleConfigSave = () => {
     toast.success('Configuration updated');
+    
+    // ✅ ADDED: Update SideNav immediately
+    window.dispatchEvent(new Event('network_config_updated'));
+    
     fetchSetupStatus();
     setEditingNetworkId(null);
   };
 
-  // SWITCH NETWORK
   const handleSwitch = async (targetNetwork: string) => {
     if (isSwitching) return;
     
@@ -112,6 +110,10 @@ export default function Settings() {
 
       toast.success(`Active Network: ${targetNetwork}`, { id: toastId });
       localStorage.setItem('panoptes-network', targetNetwork);
+      
+      // ✅ ADDED: Update SideNav immediately
+      window.dispatchEvent(new Event('network_config_updated'));
+      
       fetchSetupStatus();
     } catch (e) {
       toast.error('Failed to switch network', { id: toastId });
@@ -125,6 +127,10 @@ export default function Settings() {
 
     try {
       await fetch('/setup/clear-credentials', { method: 'DELETE' });
+      
+      // ✅ ENSURE THIS RUNS: Update SideNav immediately
+      window.dispatchEvent(new Event('network_config_updated'));
+      
       toast.success('System reset successful');
       fetchSetupStatus();
     } catch (err) {
@@ -134,6 +140,10 @@ export default function Settings() {
   
   const handleWizardComplete = () => {
       setShowWizard(false);
+      
+      // ✅ ADDED: Update SideNav immediately
+      window.dispatchEvent(new Event('network_config_updated'));
+      
       fetchSetupStatus();
       toast.success('System Initialized via Wizard');
   };
@@ -269,7 +279,6 @@ export default function Settings() {
                 <div className="space-y-3">
                   <Button 
                       variant="outline" 
-                      // CHANGE: from window.open('#') to navigate('/docs')
                       onClick={() => navigate('/docs')} 
                       className="w-full justify-between font-mono text-xs"
                   >

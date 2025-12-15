@@ -13,7 +13,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-// Added Toast for immediate feedback if needed
 import toast from 'react-hot-toast';
 
 interface SetupWizardProps {
@@ -42,8 +41,6 @@ export function SetupWizard({ onComplete, onClose }: SetupWizardProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   
-  // REMOVED: const [error, setError] ... (This was the cause of the warning)
-
   const handleNetworkChange = (value: string) => {
     setNetwork(value);
     setGrpcEndpoint(NETWORK_ENDPOINTS[value] || '');
@@ -52,7 +49,6 @@ export function SetupWizard({ onComplete, onClose }: SetupWizardProps) {
 
   const handleValidate = async () => {
     if (!apiKey.trim()) {
-      // CHANGED: Use validation result or toast instead of setError
       setValidationResult({ isValid: false, error: 'API Key is required' });
       return;
     }
@@ -107,9 +103,11 @@ export function SetupWizard({ onComplete, onClose }: SetupWizardProps) {
         body: JSON.stringify({ network }),
       });
 
+      // ✅ ADDED: Update SideNav immediately
+      window.dispatchEvent(new Event('network_config_updated'));
+
       onComplete();
     } catch (err) {
-      // CHANGED: Use toast for save errors
       toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setIsSaving(false);
@@ -157,7 +155,6 @@ export function SetupWizard({ onComplete, onClose }: SetupWizardProps) {
                     <SelectTrigger className="font-mono text-sm bg-zinc-50 dark:bg-black border-zinc-200 dark:border-zinc-800 dark:text-zinc-100">
                        <SelectValue />
                     </SelectTrigger>
-                    {/* !z-[9999] ensures dropdown appears above modal */}
                     <SelectContent className="font-mono !z-[9999] bg-white dark:bg-zinc-950 border-zinc-200 dark:border-zinc-800">
                        <SelectItem value="Mainnet">Mainnet</SelectItem>
                        <SelectItem value="Preprod">Preprod</SelectItem>

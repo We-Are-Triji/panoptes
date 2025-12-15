@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext } from 'react';
+import { useState, useEffect, useContext, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Menu, X, Check, Lock } from 'lucide-react';
 import { PRIMARY_NAV_ITEMS, SECONDARY_NAV_ITEMS } from '../config/navigation';
@@ -11,7 +11,6 @@ import toast from 'react-hot-toast';
 
 const COLLAPSE_STORAGE_KEY = 'panoptes-sidenav-collapsed';
 
-// Available Networks Definition
 const NETWORKS = [
   { id: 'Preprod', label: 'Preprod', color: 'bg-blue-500' },
   { id: 'Mainnet', label: 'Mainnet', color: 'bg-emerald-500' },
@@ -22,7 +21,6 @@ export function SideNav() {
   const { isDark, setIsDark } = useContext(ThemeContext);
   const navigate = useNavigate();
   
-  // --- Sidebar State ---
   const [isCollapsed, setIsCollapsed] = useState(() => {
     try {
       const stored = localStorage.getItem(COLLAPSE_STORAGE_KEY);
@@ -35,7 +33,6 @@ export function SideNav() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [showNetworkMenu, setShowNetworkMenu] = useState(false);
 
-  // --- Network State ---
   const [activeNetwork, setActiveNetwork] = useState<string>('Preprod');
   const [configuredNetworks, setConfiguredNetworks] = useState<string[]>([]);
   const [isSwitching, setIsSwitching] = useState(false);
@@ -44,31 +41,57 @@ export function SideNav() {
     localStorage.setItem(COLLAPSE_STORAGE_KEY, JSON.stringify(isCollapsed));
   }, [isCollapsed]);
 
-  // Fetch Network Status on Mount
-  useEffect(() => {
-    const fetchStatus = async () => {
-      try {
-        const response = await fetch('/setup/status');
-        if (response.ok) {
-            const data = await response.json();
-            if (data.isConfigured) {
-                setActiveNetwork(data.activeNetwork || 'Preprod');
-                setConfiguredNetworks(data.configuredNetworks || []);
-            }
-        }
-      } catch (e) {
-        console.error("Failed to fetch network status");
+  // ✅ FIXED: Added 'no-store' to bypass browser caching of the status
+  const fetchStatus = useCallback(async () => {
+    try {
+      // We append a timestamp just to be 100% sure the browser doesn't serve a cached "Not Configured" response
+      const response = await fetch(`/setup/status?_t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: { 'Pragma': 'no-cache', 'Cache-Control': 'no-cache' }
+      });
+
+      if (response.ok) {
+          const data = await response.json();
+          if (data.isConfigured) {
+              const active = data.activeNetwork || 'Preprod';
+              setActiveNetwork(active);
+              
+              const list = data.configuredNetworks || [];
+              if (list.length === 0) list.push(active);
+              setConfiguredNetworks(list);
+          } else {
+              // Explicitly reset if not configured
+              setConfiguredNetworks([]);
+              setActiveNetwork('Preprod');
+          }
       }
-    };
-    fetchStatus();
+    } catch (e) {
+      console.error("Failed to fetch network status");
+    }
   }, []);
+
+  // ✅ FIXED: Listener with a small safety delay
+  useEffect(() => {
+    fetchStatus();
+
+    const handleUpdate = () => {
+        // Wait 500ms to ensure DB write is complete before reading
+        setTimeout(() => {
+            fetchStatus();
+        }, 500);
+    };
+
+    window.addEventListener('network_config_updated', handleUpdate);
+    return () => {
+        window.removeEventListener('network_config_updated', handleUpdate);
+    };
+  }, [fetchStatus]);
 
   const toggleCollapse = () => setIsCollapsed(!isCollapsed);
   const toggleMobile = () => setIsMobileOpen(!isMobileOpen);
   const closeMobile = () => setIsMobileOpen(false);
 
   const handleNetworkSwitch = async (targetNetwork: string) => {
-    // 1. Check if configured
     if (!configuredNetworks.includes(targetNetwork)) {
         toast.error(`Configuration missing for ${targetNetwork}`);
         navigate('/settings');
@@ -76,10 +99,8 @@ export function SideNav() {
         return;
     }
 
-    // 2. Prevent switching to same network
     if (targetNetwork === activeNetwork) return;
 
-    // 3. Perform Switch
     setIsSwitching(true);
     const toastId = toast.loading(`Switching to ${targetNetwork}...`);
     
@@ -95,7 +116,8 @@ export function SideNav() {
         toast.success(`Active: ${targetNetwork}`, { id: toastId });
         setActiveNetwork(targetNetwork);
         
-        // Slight delay to allow backend to restart worker before UI reload
+        window.dispatchEvent(new Event('network_config_updated'));
+        
         setTimeout(() => {
             window.location.reload();
         }, 1000);
@@ -106,7 +128,6 @@ export function SideNav() {
     }
   };
 
-  // Content Component
   const NavContent = ({ forceExpanded = false }: { forceExpanded?: boolean }) => {
     const effectiveCollapsed = forceExpanded ? false : isCollapsed;
     const currentNetObj = NETWORKS.find(n => n.id === activeNetwork) || NETWORKS[0];
@@ -114,7 +135,6 @@ export function SideNav() {
 
     return (
       <div className="flex flex-col h-full bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800">
-        {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <div className="flex-shrink-0">
@@ -127,7 +147,6 @@ export function SideNav() {
             )}
           </div>
 
-          {/* MOBILE CLOSE BUTTON */}
           {forceExpanded && (
             <button 
               onClick={closeMobile}
@@ -139,7 +158,6 @@ export function SideNav() {
           )}
         </div>
 
-        {/* Scrollable Items */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden py-4 px-2 min-h-0">
           <div className="space-y-1">
             {PRIMARY_NAV_ITEMS.map((item) => (
@@ -149,18 +167,15 @@ export function SideNav() {
           
           <div className="my-4 border-t border-zinc-200 dark:border-zinc-800" />
           
-          {/* NETWORK SWITCHER */}
           <div className="mb-2">
             {!effectiveCollapsed && (
                 <div className="px-3 mb-2 flex items-center justify-between">
                     <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Network</span>
-                    {/* [REMOVED] Settings Config button deleted here as requested */}
                 </div>
             )}
             
             <div className="relative">
               {!isSystemConfigured ? (
-                 // [NEW] Not Configured State
                  <div className={cn(
                     "w-full flex items-center gap-3 px-3 py-2 rounded-md border border-dashed border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/50 text-zinc-400 cursor-not-allowed",
                     effectiveCollapsed ? "justify-center" : ""
@@ -169,7 +184,6 @@ export function SideNav() {
                      {!effectiveCollapsed && <span className="text-sm italic">Not Configured</span>}
                  </div>
               ) : (
-                // [EXISTING] Active Network Button
                 <button
                     disabled={isSwitching}
                     onClick={() => !effectiveCollapsed && setShowNetworkMenu(!showNetworkMenu)}
@@ -191,7 +205,6 @@ export function SideNav() {
                 </button>
               )}
 
-              {/* Network Dropdown */}
               {!effectiveCollapsed && showNetworkMenu && isSystemConfigured && (
                 <div className="mt-2 mx-1 p-1 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-md shadow-lg animate-in slide-in-from-top-2 duration-200 z-50">
                   {NETWORKS.map((net) => {
@@ -208,7 +221,6 @@ export function SideNav() {
                           className={cn(
                             "w-full flex items-center justify-between px-3 py-2 rounded text-sm transition-all mb-1 last:mb-0",
                             isActive 
-                              // [UPDATED] Green Theme Restored Here
                               ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 font-bold" 
                               : "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-900 hover:text-zinc-900 dark:hover:text-zinc-200"
                           )}
@@ -250,7 +262,6 @@ export function SideNav() {
           </div>
         </div>
 
-        {/* Footer */}
         <div className="shrink-0 border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
           <SideNavFooter isCollapsed={effectiveCollapsed} />
         </div>
@@ -260,7 +271,6 @@ export function SideNav() {
 
   return (
     <>
-      {/* --- MOBILE TOGGLE BUTTON --- */}
       <button 
         onClick={toggleMobile} 
         className={cn(
@@ -282,7 +292,6 @@ export function SideNav() {
         <NavContent forceExpanded={true} />
       </nav>
 
-      {/* --- DESKTOP SIDEBAR --- */}
       <div 
         className={cn(
             "hidden lg:block sticky top-0 h-screen z-30",

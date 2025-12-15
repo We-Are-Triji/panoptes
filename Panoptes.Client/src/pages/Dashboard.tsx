@@ -196,6 +196,8 @@ const Dashboard: React.FC = () => {
     fetchSetupStatus();
     fetchSystemInfo();
     fetchSubscriptions();
+    // ✅ NEW: Dispatch event to trigger SideNav update
+    window.dispatchEvent(new Event('network_config_updated'));
     toast.success('System configured successfully!');
   };
 
