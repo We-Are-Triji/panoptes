@@ -91,6 +91,15 @@ const Dashboard: React.FC = () => {
   const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
   const [showSetupWizard, setShowSetupWizard] = useState(false);
 
+  const [isTourActive, setIsTourActive] = useState(false);
+
+  useEffect(() => {
+    // Check if the tour has been completed previously
+    const tourCompleted = localStorage.getItem('panoptes_onboarding_completed');
+    if (!tourCompleted) {
+      setIsTourActive(true);
+    }
+  }, []);
   // Templates
   const [initialModalValues, setInitialModalValues] = useState<{ name?: string; eventType?: string } | undefined>(undefined);
 
@@ -328,6 +337,7 @@ const Dashboard: React.FC = () => {
 
   const handleTourFinish = () => {
     console.log("Tour finished");
+    setIsTourActive(false);
     const alreadyShown = localStorage.getItem(SETUP_WIZARD_SHOWN_KEY);
     if (!setupStatus?.isConfigured && !alreadyShown) {
       console.log("Showing setup wizard for the first time");
@@ -476,26 +486,29 @@ const Dashboard: React.FC = () => {
                   {/* Hide New Subscription Button if truly empty (Zero State) to focus on center CTA */}
                   {(hasSubscriptions || loading) && (
                     <button
-                        onClick={() => {
-                        if (!setupStatus?.isConfigured) {
-                            setShowSetupWizard(true);
-                        } else {
-                            setIsModalOpen(true);
+                      onClick={() => {
+                      // ✅ MODIFIED: If tour is active, allow opening the modal even if not configured
+                      if (!setupStatus?.isConfigured && !isTourActive) {
+                          setShowSetupWizard(true);
+                      } else {
+                          setIsModalOpen(true);
+                      }
+                      }}
+                      data-tour="create-subscription"
+                      className={`
+                        flex items-center gap-2 px-4 py-2 rounded-sm text-xs font-mono font-bold uppercase tracking-wider transition-all shadow-sm
+                        ${(setupStatus?.isConfigured || isTourActive) // ✅ MODIFIED CHECK
+                            // Active/Normal Style
+                            ? 'bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-emerald-600 dark:hover:bg-emerald-500 dark:text-white dark:border dark:border-emerald-500'
+                            // Disabled/Configure API Style
+                            : 'bg-zinc-200 text-zinc-500 cursor-not-allowed dark:bg-zinc-800'
                         }
-                        }}
-                        data-tour="create-subscription"
-                        className={`
-                          flex items-center gap-2 px-4 py-2 rounded-sm text-xs font-mono font-bold uppercase tracking-wider transition-all shadow-sm
-                          ${setupStatus?.isConfigured
-                              // CHANGED: Switched from White/Black to Emerald (Brand Color) for Dark Mode
-                              ? 'bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-emerald-600 dark:hover:bg-emerald-500 dark:text-white dark:border dark:border-emerald-500'
-                              : 'bg-zinc-200 text-zinc-500 cursor-not-allowed dark:bg-zinc-800'
-                          }
-                        `}
-                        title={!setupStatus?.isConfigured ? 'Click to configure API' : ''}
-                    >
-                        <Plus className="w-3.5 h-3.5" />
-                        {setupStatus?.isConfigured ? 'New_Subscription' : 'Configure_API'}
+                      `}
+                      title={(!setupStatus?.isConfigured && !isTourActive) ? 'Click to configure API' : ''}
+                  >
+                      <Plus className="w-3.5 h-3.5" />
+                      {/* ✅ MODIFIED LABEL */}
+                      {(setupStatus?.isConfigured || isTourActive) ? 'New_Subscription' : 'Configure_API'}
                     </button>
                   )}
                 </div>
