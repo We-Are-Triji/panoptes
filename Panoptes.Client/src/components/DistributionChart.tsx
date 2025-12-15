@@ -1,5 +1,5 @@
 import React from 'react';
-import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'; // Added ResponsiveContainer
+import { PieChart, Pie, Cell } from 'recharts'; // Added ResponsiveContainer
 import {
   ChartContainer,
   ChartTooltip,

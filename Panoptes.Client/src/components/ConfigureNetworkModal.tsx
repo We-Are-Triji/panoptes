@@ -18,7 +18,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
-import { useNavigate } from 'react-router-dom';
 
 interface ConfigureNetworkModalProps {
   networkId: string;
@@ -48,7 +47,6 @@ export function ConfigureNetworkModal({
   const [isValidating, setIsValidating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
-  const navigate = useNavigate();
 
   // 1. VALIDATE CREDENTIALS
   const handleValidate = async () => {
@@ -73,21 +71,32 @@ export function ConfigureNetworkModal({
 
       const data = await response.json();
 
-      if (!response.ok) {
-        const errorMsg = data.error || data.message || 'Validation Failed';
-        setValidationResult({ isValid: false, error: errorMsg });
-      } else {
-        if (!data.chainTipSlot || data.chainTipSlot <= 0) {
-            setValidationResult({ 
-                isValid: false, 
-                error: 'Connection rejected by provider (Invalid Key)' 
-            });
-        } else {
-            setValidationResult({ isValid: true, chainTipSlot: data.chainTipSlot });
-        }
+      // ✅ 1. Trust the Backend's explicit "IsValid" flag
+      // Your backend catches exceptions (like 401 Unauthenticated) and returns IsValid=false.
+      // We must check this first.
+      if (data.isValid === false) {
+          const errorMsg = data.message || data.error || 'Connection Rejected by Provider';
+          setValidationResult({ isValid: false, error: errorMsg });
+          return;
       }
+
+      // ✅ 2. Handle Success (Fixing the Property Name Mismatch)
+      // Backend sends "chainTip" or "ChainTip". Frontend was looking for "chainTipSlot".
+      if (data.isValid === true) {
+          // Robust check for property name capitalization
+          const tip = data.chainTip ?? data.ChainTip ?? 0;
+          
+          setValidationResult({ 
+              isValid: true, 
+              chainTipSlot: tip 
+          });
+      } else {
+          // Fallback if response is weird
+          setValidationResult({ isValid: false, error: 'Unknown response from server' });
+      }
+
     } catch (err) {
-      setValidationResult({ isValid: false, error: 'Network unavailable' });
+      setValidationResult({ isValid: false, error: 'Network Unavailable' });
     } finally {
       setIsValidating(false);
     }
@@ -217,7 +226,6 @@ export function ConfigureNetworkModal({
                     <Button 
                         onClick={handleSave} 
                         disabled={!validationResult?.isValid || isSaving} 
-                        // ✅ MODIFIED: Using Emerald-600 for the Primary Brand Color in Dark Mode
                         className="flex-1 font-mono text-xs uppercase bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-emerald-600 dark:text-white dark:hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {isSaving ? <Loader2 className="w-3 h-3 animate-spin mr-2" /> : <Save className="w-3 h-3 mr-2" />}
@@ -229,15 +237,17 @@ export function ConfigureNetworkModal({
             {/* RIGHT: Guide Section */}
             <div className="w-full md:w-[350px] bg-zinc-50/50 dark:bg-zinc-900/30 p-6 flex flex-col gap-6 overflow-y-auto">
                 <div className="space-y-2">
-                    <h4 className="text-xs font-bold font-mono uppercase text-zinc-700 dark:text-zinc-300 flex items-center gap-2">
-                        <BookOpen className="w-4 h-4" /> Setup Guide
-                    </h4>
-                    <button 
-                        onClick={() => navigate('/docs')} 
-                        className="text-[10px] text-emerald-500 hover:underline cursor-pointer"
-                    >
-                        VIEW_FULL_DOCS →
-                    </button>
+                    <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-bold font-mono uppercase text-zinc-700 dark:text-zinc-300 flex items-center gap-2">
+                            <BookOpen className="w-4 h-4" /> Setup Guide
+                        </h4>
+                        <button 
+                            onClick={() => { onClose(); window.location.href = '/docs'; }} 
+                            className="text-[10px] text-emerald-500 hover:underline cursor-pointer"
+                        >
+                            VIEW_FULL_DOCS →
+                        </button>
+                    </div>
                     <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
                         You are configuring the <strong>{networkLabel}</strong> profile. Panoptes utilizes <strong>UTxORPC</strong> for high-speed blockchain synchronization.
                     </p>
@@ -272,7 +282,7 @@ export function ConfigureNetworkModal({
                         <span className="absolute -left-[5px] top-0 w-2 h-2 rounded-full bg-indigo-500"></span>
                         <h5 className="text-[10px] font-bold font-mono uppercase text-indigo-600 dark:text-indigo-400 mb-1">Step 04</h5>
                         <p className="text-xs text-zinc-600 dark:text-zinc-400">
-                            Deploy the port, then copy the <strong>API Key</strong> (starts with <code>utxorpc_</code>) into the form on the left.
+                            Deploy the port, then copy the <strong>API Key</strong> (starts with <code>dmtr_</code>) into the form on the left.
                         </p>
                     </div>
                 </div>

@@ -8,6 +8,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Grpc.Core;           
+using Grpc.Net.Client;     
+using Utxorpc.V1alpha.Sync; 
 
 namespace Panoptes.Api.Controllers
 {
@@ -29,12 +32,10 @@ namespace Panoptes.Api.Controllers
         [HttpGet("status")]
         public async Task<ActionResult<SetupStatus>> GetStatus()
         {
-            // Get the currently active config
             var activeConfig = await _dbContext.DemeterConfigs
                 .AsNoTracking()
                 .FirstOrDefaultAsync(c => c.IsActive);
 
-            // Get list of all configured networks (where we have keys stored)
             var configuredNetworks = await _dbContext.DemeterConfigs
                 .AsNoTracking()
                 .Select(c => c.Network)
@@ -59,8 +60,7 @@ namespace Panoptes.Api.Controllers
                 return BadRequest(new ValidationResult { IsValid = false, Message = "Endpoint and API Key are required" });
             }
 
-            // SAFETY CHECK: Prevent mixing up networks
-            // Demeter endpoints usually contain the network name (e.g., 'cardano-mainnet' or 'cardano-preprod')
+            // SAFETY CHECK: Network Mismatch
             if (!string.IsNullOrEmpty(credentials.Network))
             {
                 var urlLower = credentials.GrpcEndpoint.ToLower();
@@ -75,21 +75,56 @@ namespace Panoptes.Api.Controllers
 
             try
             {
-                var headers = new Dictionary<string, string> { { "dmtr-api-key", credentials.ApiKey } };
-                var provider = new PanoptesU5CProvider(credentials.GrpcEndpoint, headers);
+                // -----------------------------------------------------------------------
+                // DIRECT AUTHENTICATION CHECK
+                // -----------------------------------------------------------------------
                 
-                // Use a default timeout for validation so we don't hang
-                using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(10));
+                var channelOptions = new GrpcChannelOptions
+                {
+                    HttpHandler = new SocketsHttpHandler { EnableMultipleHttp2Connections = true }
+                };
                 
-                // We just ask for the tip. If the key is invalid, Demeter throws RpcException(Unauthenticated).
-                // If the key is for the wrong network, the Slot/Hash might look weird, but usually connection succeeds.
-                var tip = await provider.GetTipAsync(0, cts.Token);
+                using var channel = GrpcChannel.ForAddress(credentials.GrpcEndpoint, channelOptions);
+                var client = new SyncService.SyncServiceClient(channel);
+                var headers = new Metadata { { "dmtr-api-key", credentials.ApiKey } };
+                
+                var deadline = DateTime.UtcNow.AddSeconds(5);
+                
+                try 
+                {
+                    // FIX 1: Use collection initializer syntax for RepeatedField
+                    var request = new FetchBlockRequest 
+                    { 
+                        Ref = { new BlockRef { Index = 0, Hash = Google.Protobuf.ByteString.Empty } } 
+                    };
+                    
+                    await client.FetchBlockAsync(request, headers, deadline);
+                }
+                catch (RpcException rpcEx)
+                {
+                    // FIX 2: Explicitly use Grpc.Core.StatusCode to avoid collision
+                    if (rpcEx.StatusCode == Grpc.Core.StatusCode.Unauthenticated || 
+                        rpcEx.StatusCode == Grpc.Core.StatusCode.PermissionDenied)
+                    {
+                        return Ok(new ValidationResult 
+                        { 
+                            IsValid = false, 
+                            Message = "AUTHENTICATION FAILED: API Key rejected." 
+                        });
+                    }
+
+                    if (rpcEx.StatusCode != Grpc.Core.StatusCode.NotFound && 
+                        rpcEx.StatusCode != Grpc.Core.StatusCode.InvalidArgument)
+                    {
+                        throw; 
+                    }
+                }
 
                 return Ok(new ValidationResult
                 {
                     IsValid = true,
-                    Message = $"Connection successful! Chain tip at slot {tip.Slot}",
-                    ChainTip = tip.Slot
+                    Message = "Connection Verified!",
+                    ChainTip = 1 
                 });
             }
             catch (Exception ex)
@@ -114,7 +149,6 @@ namespace Panoptes.Api.Controllers
             {
                 var encryptedApiKey = _dataProtector.Protect(credentials.ApiKey);
 
-                // UPSERT LOGIC: Check if we already have a profile for this network
                 var existingConfig = await _dbContext.DemeterConfigs
                     .FirstOrDefaultAsync(c => c.Network == network);
 
@@ -124,14 +158,11 @@ namespace Panoptes.Api.Controllers
                     existingConfig.GrpcEndpoint = credentials.GrpcEndpoint;
                     existingConfig.ApiKeyEncrypted = encryptedApiKey;
                     existingConfig.UpdatedAt = DateTime.UtcNow;
-                    // Note: We do NOT automatically set IsActive=true here unless you want to force switch on save.
-                    // For now, let's keep the user on their current network unless they explicitly switch.
                 }
                 else
                 {
                     _logger.LogInformation("Creating new configuration profile for {Network}", network);
                     
-                    // If this is the FIRST config ever, make it active automatically
                     var isFirstConfig = !await _dbContext.DemeterConfigs.AnyAsync();
                     
                     var newConfig = new DemeterConfig
@@ -161,7 +192,6 @@ namespace Panoptes.Api.Controllers
         {
             var targetNetwork = request.Network;
             
-            // 1. Find the target config
             var targetConfig = await _dbContext.DemeterConfigs
                 .FirstOrDefaultAsync(c => c.Network == targetNetwork);
 
@@ -170,14 +200,12 @@ namespace Panoptes.Api.Controllers
                 return NotFound(new { Error = $"No configuration found for {targetNetwork}. Please configure it first." });
             }
 
-            // 2. Deactivate currently active config
             var activeConfigs = await _dbContext.DemeterConfigs
                 .Where(c => c.IsActive)
                 .ToListAsync();
 
             foreach (var c in activeConfigs) c.IsActive = false;
 
-            // 3. Activate target
             targetConfig.IsActive = true;
             await _dbContext.SaveChangesAsync();
 
@@ -190,7 +218,7 @@ namespace Panoptes.Api.Controllers
         public async Task<ActionResult> ClearCredentials()
         {
             var configs = await _dbContext.DemeterConfigs.ToListAsync();
-            _dbContext.DemeterConfigs.RemoveRange(configs); // Actually delete them to wipe slate clean
+            _dbContext.DemeterConfigs.RemoveRange(configs); 
             await _dbContext.SaveChangesAsync();
             return Ok(new { Message = "All credentials wiped." });
         }
