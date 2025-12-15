@@ -391,10 +391,12 @@ function groupLogsByEventType(
   logs: DeliveryLog[],
   subscriptions: WebhookSubscription[]
 ): DistributionDataPoint[] {
-  // Create a map for fallback lookup
   const subscriptionMap = new Map(subscriptions.map(s => [s.id, s]));
   const eventTypeCounts: Map<string, number> = new Map();
   
+  // ✅ STRICT ALLOWLIST
+  const ALLOWED_TYPES = ['Transaction', 'NftMint', 'AssetMove'];
+
   logs.forEach(log => {
     let eventType = 'Unknown';
 
@@ -418,22 +420,26 @@ function groupLogsByEventType(
        }
     }
 
-    // 3. Fallback for capitalization consistency (Backend sends 'Transaction', UI might use 'transaction')
-    // Capitalize first letter to merge them
+    // 3. Fallback for capitalization consistency 
     if (eventType && eventType !== 'Unknown') {
         eventType = eventType.charAt(0).toUpperCase() + eventType.slice(1);
     }
 
-    eventTypeCounts.set(eventType, (eventTypeCounts.get(eventType) || 0) + 1);
+    // ✅ STRICT FILTER: Only count if it's in our allowlist
+    // This effectively ignores "Test", "Unknown", or any other garbage data
+    if (ALLOWED_TYPES.includes(eventType)) {
+         eventTypeCounts.set(eventType, (eventTypeCounts.get(eventType) || 0) + 1);
+    }
   });
   
-  const total = logs.length || 1; 
+  // Calculate total based only on valid types to ensure percentages add up to 100%
+  const validTotal = Array.from(eventTypeCounts.values()).reduce((sum, count) => sum + count, 0) || 1;
   
   return Array.from(eventTypeCounts.entries())
     .map(([eventType, count], index) => ({
       eventType,
       count,
-      percentage: Math.round((count / total) * 100),
+      percentage: Math.round((count / validTotal) * 100),
       fill: CHART_COLORS[index % CHART_COLORS.length],
     }))
     .sort((a, b) => b.count - a.count);
@@ -490,10 +496,8 @@ export function useStatsData(
   const statsData = useMemo((): StatsData => {
     const filteredLogs = filterLogsByTimeRange(allLogs, timeRange);
     
-    // Calculate rate-limited subscriptions
     const rateLimitedCount = subscriptions.filter(s => s.isRateLimited).length;
     
-    // NEW: Calculate Value Metrics & Heatmap
     const valueMetrics = calculateValueMetrics(filteredLogs);
     const heatmapData = calculateHourlyHeatmap(filteredLogs);
     
@@ -507,7 +511,7 @@ export function useStatsData(
       totalVolumeAda: valueMetrics.totalAda,
       topSourceWallet: valueMetrics.topSource,
       topSourceCount: valueMetrics.topSourceCount,
-      heatmapData, // New
+      heatmapData,
 
       volumeData: groupLogsByTimeBucket(filteredLogs, timeRange),
       distributionData: groupLogsByEventType(filteredLogs, subscriptions),
