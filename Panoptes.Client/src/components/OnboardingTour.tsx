@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Joyride, { CallBackProps, STATUS, Step, TooltipRenderProps } from 'react-joyride';
 
 const TOUR_STORAGE_KEY = 'panoptes_onboarding_completed';
@@ -22,12 +23,10 @@ function CustomTooltip({
       {...tooltipProps}
       className="bg-[#09090b] border border-zinc-800 text-zinc-100 p-6 max-w-md rounded-sm shadow-2xl font-mono relative overflow-hidden"
     >
-      {/* Grid Background Effect (Subtle Industrial) */}
       <div className="absolute inset-0 opacity-[0.03] pointer-events-none" 
            style={{ backgroundImage: 'radial-gradient(#ffffff 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
       </div>
 
-      {/* Header */}
       <div className="flex justify-between items-center mb-4 border-b border-zinc-800 pb-2 relative z-10">
         <span className="text-zinc-500 text-xs tracking-widest uppercase font-bold">
           SYSTEM_GUIDE // STEP_0{index + 1}
@@ -42,12 +41,10 @@ function CustomTooltip({
         </button>
       </div>
 
-      {/* Content */}
       <div className="mb-6 relative z-10">
         {step.content}
       </div>
 
-      {/* Footer / Controls */}
       <div className="flex justify-between items-center relative z-10">
         <div className="flex gap-2">
           {index > 0 && (
@@ -62,9 +59,9 @@ function CustomTooltip({
         
         <button
           {...primaryProps}
-          className="px-6 py-2 text-xs font-bold bg-zinc-100 text-black hover:bg-white hover:shadow-[0_0_15px_rgba(255,255,255,0.2)] transition-all uppercase tracking-wider rounded-sm"
+          className="px-6 py-2 text-xs font-bold bg-emerald-500 text-zinc-950 hover:bg-emerald-400 hover:shadow-[0_0_15px_rgba(16,185,129,0.4)] transition-all uppercase tracking-wider rounded-sm"
         >
-          {isLastStep ? 'Initialize_System >' : 'Next_Step >'}
+          {isLastStep ? 'Launch_Wizard >' : 'Next_Step >'}
         </button>
       </div>
     </div>
@@ -74,6 +71,7 @@ function CustomTooltip({
 export function OnboardingTour({ enabled = true, onFinish }: OnboardingTourProps) {
   const [run, setRun] = useState(false);
   const hasNotifiedRef = useRef(false);
+  const navigate = useNavigate();
   
   // Check if tour has been completed
   useEffect(() => {
@@ -86,7 +84,6 @@ export function OnboardingTour({ enabled = true, onFinish }: OnboardingTourProps
     if (!isCompleted) {
       setRun(true);
     } else {
-      // Tour was already completed, notify parent immediately (only once)
       if (onFinish && !hasNotifiedRef.current) {
         hasNotifiedRef.current = true;
         setTimeout(() => onFinish(), 100);
@@ -99,12 +96,19 @@ export function OnboardingTour({ enabled = true, onFinish }: OnboardingTourProps
     const finishedStatuses: string[] = [STATUS.FINISHED, STATUS.SKIPPED];
 
     if (finishedStatuses.includes(status)) {
-      setRun(false);
       localStorage.setItem(TOUR_STORAGE_KEY, 'true');
-      // Use setTimeout to ensure state updates have processed
-      setTimeout(() => {
-        if (onFinish) onFinish();
-      }, 100);
+      
+      if (status === STATUS.FINISHED) {
+          // 1. Prioritize Navigation with a Query Param trigger
+          // We send ?setup=true so the destination page knows to open the wizard
+          navigate('/settings?setup=true');
+          
+          // 2. Fire the callback just in case the parent is still alive
+          if (onFinish) onFinish();
+      }
+
+      // 3. Close the tour (small delay to allow navigation to start)
+      setTimeout(() => setRun(false), 50);
     }
   };
 
@@ -121,14 +125,13 @@ export function OnboardingTour({ enabled = true, onFinish }: OnboardingTourProps
       ),
       placement: 'center',
     },
-    // ✅ NEW STEP: Network Switcher
     {
-        target: 'nav', // General target for the sidebar
+        target: 'nav', 
         content: (
             <div>
                 <h3 className="font-bold text-lg mb-2 text-white uppercase tracking-wide">Network_Manager</h3>
                 <p className="text-zinc-400 text-sm leading-relaxed">
-                    Switch between <strong>Preprod</strong>, <strong>Mainnet</strong>, and <strong>Preview</strong> using the dropdown menu. Configure API keys for each network in Settings.
+                    Switch between <strong>Preprod</strong>, <strong>Mainnet</strong>, and <strong>Preview</strong> using the dropdown menu.
                 </p>
             </div>
         ),
@@ -173,9 +176,9 @@ export function OnboardingTour({ enabled = true, onFinish }: OnboardingTourProps
       target: 'body',
       content: (
         <div>
-          <h3 className="font-bold text-lg mb-2 text-white uppercase tracking-wide">System_Test</h3>
+          <h3 className="font-bold text-lg mb-2 text-white uppercase tracking-wide">System_Setup</h3>
           <p className="text-zinc-400 text-sm leading-relaxed">
-            Verify your integration integrity. Use the built-in tester to simulate events and validate webhook delivery.
+            Your environment requires initial configuration. Click below to launch the <strong>Setup Wizard</strong> and generate your API keys.
           </p>
         </div>
       ),
