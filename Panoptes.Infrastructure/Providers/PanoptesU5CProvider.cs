@@ -36,12 +36,6 @@ public class PanoptesU5CProvider : ICardanoChainProvider
     {
         try
         {
-            // ---------------------------------------------------------
-            // 1. DYNAMIC NETWORK DETECTION
-            // ---------------------------------------------------------
-            // We infer the target network from the Demeter URL string.
-            // Demeter URLs format: "cardano-mainnet.utxorpc..." or "cardano-preprod.utxorpc..."
-            
             string koiosUrl;
 
             if (_url.Contains("mainnet", StringComparison.OrdinalIgnoreCase))
@@ -54,7 +48,6 @@ public class PanoptesU5CProvider : ICardanoChainProvider
             }
             else
             {
-                // Default to Preprod for safety (or if explicit 'preprod' is found)
                 koiosUrl = "https://preprod.koios.rest/api/v1/tip";
             }
             
