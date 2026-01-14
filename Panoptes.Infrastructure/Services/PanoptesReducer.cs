@@ -293,7 +293,7 @@ namespace Panoptes.Infrastructure.Services
                         }
                         
                         // Rate Limit & Dispatch
-                        var rl = await CheckRateLimitAsync(dbContext, sub); // Pass dbContext
+                        var rl = CheckRateLimit(sub); // Pass dbContext
                         if (!rl.Allowed)
                         {
                             await RecordThrottledEvent(dbContext, sub, payload, rl);
@@ -310,7 +310,7 @@ namespace Panoptes.Infrastructure.Services
                                 var mostRecent = _pendingWebhooks[sub.Id].Last();
                                 _pendingWebhooks[sub.Id].Clear();
                                 // Re-check limit for the batch
-                                var rlBatch = await CheckRateLimitAsync(dbContext, sub);
+                                var rlBatch = CheckRateLimit(sub);
                                 if(rlBatch.Allowed) await DispatchWebhook(dbContext, sub, mostRecent);
                             }
                         }
@@ -448,7 +448,7 @@ namespace Panoptes.Infrastructure.Services
                 
                 var mostRecentPayload = payloads.Last();
                 
-                var rl = await CheckRateLimitAsync(dbContext, sub);
+                var rl = CheckRateLimit(sub);
                 if (rl.Allowed) await DispatchWebhook(dbContext, sub, mostRecentPayload);
                 else await RecordThrottledEvent(dbContext, sub, mostRecentPayload, rl);
             }
@@ -457,7 +457,7 @@ namespace Panoptes.Infrastructure.Services
         
         private record RateLimitCheckResult(bool Allowed, string? Window, int? RetryInSeconds);
 
-        private async Task<RateLimitCheckResult> CheckRateLimitAsync(IAppDbContext dbContext, WebhookSubscription sub)
+        private RateLimitCheckResult CheckRateLimit(WebhookSubscription sub)
         {
             if (sub.MaxWebhooksPerMinute == 0 && sub.MaxWebhooksPerHour == 0) return new RateLimitCheckResult(true, null, null);
 
@@ -471,12 +471,7 @@ namespace Panoptes.Infrastructure.Services
 
             if (sub.MaxWebhooksPerMinute > 0 && minuteWindow.Count >= sub.MaxWebhooksPerMinute)
             {
-                // We need to update DB that we are rate limited
-                // Since 'sub' is NoTracking, we attach it
-                dbContext.WebhookSubscriptions.Attach(sub);
                 sub.IsRateLimited = true;
-                await dbContext.SaveChangesAsync();
-                
                 _disabledDuringProcessing.Add(sub.Id);
                 int retryIn = 60 - (int)(now - (minuteWindow.Count > 0 ? minuteWindow.Peek() : now)).TotalSeconds;
                 return new RateLimitCheckResult(false, "minute", Math.Max(retryIn, 1));
@@ -484,10 +479,7 @@ namespace Panoptes.Infrastructure.Services
 
             if (sub.MaxWebhooksPerHour > 0 && hourWindow.Count >= sub.MaxWebhooksPerHour)
             {
-                dbContext.WebhookSubscriptions.Attach(sub);
                 sub.IsRateLimited = true;
-                await dbContext.SaveChangesAsync();
-
                 _disabledDuringProcessing.Add(sub.Id);
                 int retryIn = 3600 - (int)(now - (hourWindow.Count > 0 ? hourWindow.Peek() : now)).TotalSeconds;
                 return new RateLimitCheckResult(false, "hour", Math.Max(retryIn, 60));
