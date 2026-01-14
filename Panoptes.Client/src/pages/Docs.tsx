@@ -1,13 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Search, Menu, X, ChevronRight, ChevronDown, ExternalLink } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { Search, Menu, X, ChevronRight, ChevronDown, ExternalLink, ArrowLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DOC_SECTIONS, DocSection } from './docs/sections';
 import { ALL_CONTENT, searchDocs } from './docs/content';
 import ReactMarkdown from 'react-markdown';
 
 export default function Docs() {
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -46,7 +45,6 @@ export default function Docs() {
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-100">
       <Header 
-        onBack={() => navigate('/dashboard')} 
         onMenuToggle={() => setMobileMenuOpen(!mobileMenuOpen)}
         mobileMenuOpen={mobileMenuOpen}
       />
@@ -96,20 +94,16 @@ export default function Docs() {
   );
 }
 
-function Header({ onBack, onMenuToggle, mobileMenuOpen }: { 
-  onBack: () => void; 
+function Header({ onMenuToggle, mobileMenuOpen }: { 
   onMenuToggle: () => void;
   mobileMenuOpen: boolean;
 }) {
   return (
     <header className="fixed top-0 left-0 right-0 h-16 border-b border-zinc-200 dark:border-zinc-800 bg-white/90 dark:bg-zinc-950/90 backdrop-blur-md z-50 flex items-center justify-between px-4 lg:px-6">
-      <div className="flex items-center gap-3">
-        <button onClick={onBack} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md">
-          <ArrowLeft className="w-5 h-5 text-zinc-500" />
-        </button>
-        <div className="h-5 w-px bg-zinc-200 dark:bg-zinc-800" />
-        <span className="font-mono font-bold text-sm">Panoptes Documentation</span>
-      </div>
+      <a href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+        <img src="/logo_panoptes.svg" alt="Panoptes" className="w-6 h-6" />
+        <span className="font-mono font-bold text-sm">Panoptes Docs</span>
+      </a>
       <div className="flex items-center gap-3">
         <a 
           href="https://github.com/We-Are-Triji/panoptes" 
