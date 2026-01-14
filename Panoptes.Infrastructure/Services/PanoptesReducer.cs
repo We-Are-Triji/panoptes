@@ -97,19 +97,21 @@ namespace Panoptes.Infrastructure.Services
                 }
             }
 
+            _disabledDuringProcessing.Clear();
+
+            // Fetch subscriptions first
+            var allSubscriptions = await dbContext.WebhookSubscriptions
+                .AsNoTracking()
+                .Where(s => !s.IsDeleted) 
+                .ToListAsync();
+
             if (blockHeight % 100 == 0)
             {
                 var mode = _isCatchingUp ? "[CATCH-UP]" : "[REAL-TIME]";
                 _logger?.LogInformation("{Mode} Processing block at slot {Slot}, height {Height}", mode, slot, blockHeight);
+                
+                CleanupStaleRateLimitEntries(allSubscriptions);
             }
-            
-            _disabledDuringProcessing.Clear();
-
-            // ✅ FETCH FRESH DATA: Get ALL non-deleted subscriptions (Active AND Paused)
-            var allSubscriptions = await dbContext.WebhookSubscriptions
-                .AsNoTracking() // Read-only for speed, we attach explicitly if we need to update
-                .Where(s => !s.IsDeleted) 
-                .ToListAsync();
             
             // Log counts periodically
             if (blockHeight % 100 == 0 && allSubscriptions.Any())
@@ -453,6 +455,13 @@ namespace Panoptes.Infrastructure.Services
                 else await RecordThrottledEvent(dbContext, sub, mostRecentPayload, rl);
             }
             _pendingWebhooks.Clear();
+        }
+
+        private void CleanupStaleRateLimitEntries(List<WebhookSubscription> activeSubscriptions)
+        {
+            var activeIds = activeSubscriptions.Select(s => s.Id).ToHashSet();
+            var staleIds = _rateLimitTracking.Keys.Where(id => !activeIds.Contains(id)).ToList();
+            foreach (var id in staleIds) _rateLimitTracking.Remove(id);
         }
         
         private record RateLimitCheckResult(bool Allowed, string? Window, int? RetryInSeconds);
