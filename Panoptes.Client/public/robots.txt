@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://panoptes.dev/sitemap.xml
+
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
