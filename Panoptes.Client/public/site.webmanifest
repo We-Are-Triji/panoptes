@@ -18,8 +18,8 @@
       "type": "image/png"
     },
     {
-      "src": "/assets/icons/favicon-16x16.png",
-      "sizes": "16x16",
+      "src": "/favicon.png",
+      "sizes": "128x128",
       "type": "image/png"
     }
   ]
