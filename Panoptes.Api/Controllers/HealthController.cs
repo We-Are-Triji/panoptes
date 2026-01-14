@@ -13,7 +13,6 @@ namespace Panoptes.Api.Controllers
 {
     [ApiController]
     [Route("[controller]")]
-    [Authorize]
     public class HealthController : ControllerBase
     {
         private readonly IAppDbContext _dbContext;
@@ -31,18 +30,14 @@ namespace Panoptes.Api.Controllers
             _httpClientFactory = httpClientFactory;
         }
 
-        private string GetCurrentUserId()
+        private string? GetCurrentUserId()
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                         ?? User.FindFirst("sub")?.Value;
-
-            if (string.IsNullOrEmpty(userId))
-                throw new UnauthorizedAccessException("User ID claim not found in token.");
-
-            return userId;
+            return User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                   ?? User.FindFirst("sub")?.Value;
         }
 
         [HttpGet]
+        [AllowAnonymous]
         public async Task<ActionResult<HealthResponse>> GetHealth()
         {
             var response = new HealthResponse
@@ -60,7 +55,7 @@ namespace Panoptes.Api.Controllers
             };
 
             var userId = GetCurrentUserId();
-            var metrics = await GetMetricsAsync(userId);
+            var metrics = userId != null ? await GetMetricsAsync(userId) : new MetricsInfo();
             var systemInfo = GetSystemInfo();
 
             response.Checks = checks;
@@ -82,6 +77,7 @@ namespace Panoptes.Api.Controllers
         }
 
         [HttpGet("system-info")]
+        [AllowAnonymous]
         public async Task<ActionResult<SystemInfo>> GetSystemConfiguration()
         {
             var dbConfig = await _dbContext.DemeterConfigs
