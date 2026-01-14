@@ -32,7 +32,6 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
   const [isMobileDevice, setIsMobileDevice] = useState(false);
   const { isPlaying } = useAudio(); 
   
-  // ✅ Auth & Navigation
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -40,9 +39,13 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
     const checkDevice = () => {
       const userAgent = typeof window.navigator === "undefined" ? "" : navigator.userAgent;
       const mobileRegex = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;
-      setIsMobileDevice(mobileRegex.test(userAgent));
+      const isMobileUA = mobileRegex.test(userAgent);
+      const isSmallScreen = window.innerWidth < 768;
+      setIsMobileDevice(isMobileUA || isSmallScreen);
     };
     checkDevice();
+    window.addEventListener('resize', checkDevice);
+    return () => window.removeEventListener('resize', checkDevice);
   }, []);
 
   useEffect(() => {
@@ -114,8 +117,28 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
             isMobileDevice ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2"
         )}>
           
-          {/* --- LEFT: FORM (Always Visible) --- */}
-          <div className="relative p-8 md:p-10 flex flex-col justify-center border-r border-white/5">
+          {/* --- MOBILE BLOCK MESSAGE --- */}
+          {isMobileDevice ? (
+            <div className="relative p-8 md:p-10 flex flex-col justify-center items-center text-center">
+              <div className="mb-6">
+                <div className="h-16 w-16 rounded-full border border-amber-500/30 flex items-center justify-center mx-auto mb-4">
+                  <span className="text-3xl">🖥️</span>
+                </div>
+                <h2 className="font-michroma text-lg text-white mb-2">DESKTOP REQUIRED</h2>
+                <p className="font-mono text-xs text-zinc-400 leading-relaxed max-w-xs">
+                  Panoptes is a professional blockchain monitoring dashboard designed for desktop use.
+                </p>
+              </div>
+              <div className="border border-zinc-800 rounded-sm p-4 bg-zinc-900/50">
+                <p className="font-mono text-[10px] text-zinc-500">
+                  Please access from a desktop browser
+                </p>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* --- LEFT: FORM --- */}
+              <div className="relative p-8 md:p-10 flex flex-col justify-center border-r border-white/5">
             <div className="absolute top-4 left-4 font-mono text-[10px] text-ghost/20 select-none">
                 [ ESC_TO_ABORT ]
             </div>
@@ -188,6 +211,9 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
                      </p>
                  </div>
               </div>
+          )}
+
+            </>
           )}
 
         </div>

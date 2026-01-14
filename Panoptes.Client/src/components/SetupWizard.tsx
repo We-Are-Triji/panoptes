@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
+import api from '@/services/api';
 
 interface SetupWizardProps {
   onComplete: () => void;
@@ -57,23 +58,13 @@ export function SetupWizard({ onComplete, onClose }: SetupWizardProps) {
     setValidationResult(null);
 
     try {
-      const response = await fetch('/setup/validate-demeter', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ grpcEndpoint, apiKey, network }),
+      const response = await api.post('/setup/validate-demeter', { 
+        grpcEndpoint, apiKey, network 
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        const errorMsg = data.error || data.message || 'Validation failed';
-        setValidationResult({ isValid: false, error: errorMsg });
-        return;
-      }
-
-      setValidationResult({ isValid: true, chainTipSlot: data.chainTipSlot });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Network error';
+      setValidationResult({ isValid: true, chainTipSlot: response.data.chainTipSlot });
+    } catch (err: any) {
+      const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Validation failed';
       setValidationResult({ isValid: false, error: msg });
     } finally {
       setIsValidating(false);
@@ -86,29 +77,13 @@ export function SetupWizard({ onComplete, onClose }: SetupWizardProps) {
     setIsSaving(true);
 
     try {
-      const response = await fetch('/setup/save-credentials', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ grpcEndpoint, apiKey, network }),
-      });
+      await api.post('/setup/save-credentials', { grpcEndpoint, apiKey, network });
+      await api.post('/setup/switch-network', { network });
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to save');
-      }
-
-      await fetch('/setup/switch-network', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ network }),
-      });
-
-      // ✅ ADDED: Update SideNav immediately
       window.dispatchEvent(new Event('network_config_updated'));
-
       onComplete();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Save failed');
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || err.message || 'Save failed');
     } finally {
       setIsSaving(false);
     }

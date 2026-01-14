@@ -12,6 +12,7 @@ import { useScrollbarTheme } from './hooks/useScrollbarTheme';
 import { useAuth, AuthProvider } from './context/AuthContext';
 import { CustomCursor } from './pages/landing/components/Cursor';
 import Docs from './pages/Docs';
+import { useMobileDetection, MobileBlocker } from './components/MobileBlocker';
 
 export const ThemeContext = createContext<{
   isDark: boolean;
@@ -24,13 +25,17 @@ export const ThemeContext = createContext<{
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { user, loading } = useAuth();
   const location = useLocation();
+  const isMobile = useMobileDetection();
 
   if (loading) {
-    return <div className="min-h-screen bg-black" />; // Silent loading
+    return <div className="min-h-screen bg-black" />;
+  }
+
+  if (isMobile) {
+    return <MobileBlocker />;
   }
 
   if (!user) {
-    // Redirect them to the Landing Page ("/") if not logged in
     return <Navigate to="/" state={{ from: location }} replace />;
   }
 
