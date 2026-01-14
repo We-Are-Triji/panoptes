@@ -87,7 +87,7 @@ export function Menu({ closeMenu, onOpenLogin }: MenuProps) {
                  initial={{ opacity: 0 }} 
                  animate={{ opacity: 1 }} 
                  transition={{ delay: 0.6 }}
-                 className="mt-12"
+                 className="mt-12 hidden md:block"
                >
                    <div onClick={() => { closeMenu(); onOpenLogin(); }}>
                        <GlitchButton 

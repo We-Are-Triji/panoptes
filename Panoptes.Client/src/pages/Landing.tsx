@@ -147,7 +147,7 @@ function Landing() {
 
                   <div className="flex items-center gap-4">
                       <VolumeControl /> 
-                      <div onClick={() => setIsLoginOpen(true)}>
+                      <div onClick={() => setIsLoginOpen(true)} className="hidden md:block">
                         <GlitchButton
                           label="Login"
                           variant="primary"
