@@ -466,8 +466,7 @@ namespace Panoptes.Api.Controllers
                 var query = _dbContext.DeliveryLogs
                     .Include(l => l.Subscription)
                     .Where(l => l.Subscription != null &&
-                                l.Subscription.UserId == userId &&
-                                !l.Subscription.IsDeleted);
+                                l.Subscription.UserId == userId);
 
                 var totalCount = await query.CountAsync();
 
