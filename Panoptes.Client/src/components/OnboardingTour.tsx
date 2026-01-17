@@ -127,18 +127,6 @@ export function OnboardingTour({ enabled = true, onFinish }: OnboardingTourProps
       placement: 'center',
     },
     {
-        target: 'nav', 
-        content: (
-            <div>
-                <h3 className="font-bold text-lg mb-2 text-white uppercase tracking-wide">Network_Manager</h3>
-                <p className="text-zinc-400 text-sm leading-relaxed">
-                    Switch between <strong>Preprod</strong>, <strong>Mainnet</strong>, and <strong>Preview</strong> using the dropdown menu.
-                </p>
-            </div>
-        ),
-        placement: 'right'
-    },
-    {
       target: '[data-tour="create-subscription"]',
       content: (
         <div>
