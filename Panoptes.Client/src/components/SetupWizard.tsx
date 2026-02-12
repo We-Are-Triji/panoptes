@@ -125,7 +125,7 @@ export function SetupWizard({ onComplete, onClose }: SetupWizardProps) {
            {/* Form */}
            <div className="space-y-4">
               <div className="space-y-1.5">
-                 <Label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase">Select Network</Label>
+                 <span className="text-xs font-bold uppercase tracking-wide" style={{ color: '#a1a1aa' }}>Select Network</span>
                  <Select value={network} onValueChange={handleNetworkChange}>
                     <SelectTrigger className="font-mono text-sm bg-zinc-50 dark:bg-black border-zinc-200 dark:border-zinc-800 dark:text-zinc-100">
                        <SelectValue />
@@ -139,7 +139,7 @@ export function SetupWizard({ onComplete, onClose }: SetupWizardProps) {
               </div>
 
               <div className="space-y-1.5">
-                 <Label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase">Provider Endpoint (gRPC)</Label>
+                 <span className="text-xs font-bold uppercase tracking-wide" style={{ color: '#a1a1aa' }}>Provider Endpoint (gRPC)</span>
                  <div className="relative">
                     <Terminal className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
                     <Input 
@@ -152,7 +152,7 @@ export function SetupWizard({ onComplete, onClose }: SetupWizardProps) {
 
               <div className="space-y-1.5">
                  <div className="flex justify-between">
-                 <Label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase">Demeter API Key</Label>
+                 <span className="text-xs font-bold uppercase tracking-wide" style={{ color: '#a1a1aa' }}>Demeter API Key</span>
                     <a href="https://demeter.run" target="_blank" rel="noreferrer" className="text-[10px] text-indigo-500 hover:underline">Get Key →</a>
                  </div>
                  <Input 

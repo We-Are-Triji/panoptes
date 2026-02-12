@@ -161,7 +161,7 @@ export function ConfigureNetworkModal({
             <div className="flex-1 p-6 space-y-6 overflow-y-auto border-r border-zinc-200 dark:border-zinc-800">
                 <div className="space-y-4">
                     <div className="grid gap-2">
-                        <Label className="text-xs font-mono font-bold uppercase text-zinc-500">Provider Endpoint (UTxORPC)</Label>
+                        <span className="text-xs font-mono font-bold uppercase tracking-wide" style={{ color: '#a1a1aa' }}>Provider Endpoint (UTxORPC)</span>
                         <div className="relative">
                             <Terminal className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
                             <Input
@@ -174,7 +174,7 @@ export function ConfigureNetworkModal({
 
                     <div className="grid gap-2">
                         <div className="flex justify-between items-center">
-                            <Label className="text-xs font-mono font-bold uppercase text-zinc-500">Demeter API Token</Label>
+                            <span className="text-xs font-mono font-bold uppercase tracking-wide" style={{ color: '#a1a1aa' }}>Demeter API Token</span>
                         </div>
                         <div className="relative">
                             <Input
